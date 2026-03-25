@@ -6,6 +6,8 @@ import cors from 'cors';
 import { errorHandler } from './shared/middleware/error-handler';
 import { authRouter } from './features/auth/auth.router';
 import { contactsRouter } from './features/contacts/contacts.router';
+import { chatRouter } from './features/chat/chat.router';
+import { setupChatSocket } from './features/chat/chat.socket';
 
 const app = express();
 const httpServer = createServer(app);
@@ -24,18 +26,11 @@ app.get('/health', (_req, res) => {
 
 // Feature routes
 app.use('/api/auth', authRouter);
-// app.use('/api/users', usersRouter);
 app.use('/api/contacts', contactsRouter);
-// app.use('/api/chat', chatRouter);
+app.use('/api/chat', chatRouter);
 
-// Socket.IO connection
-io.on('connection', (socket) => {
-  console.log(`Client connected: ${socket.id}`);
-
-  socket.on('disconnect', () => {
-    console.log(`Client disconnected: ${socket.id}`);
-  });
-});
+// Socket.IO setup
+setupChatSocket(io);
 
 // Error handler (must be last)
 app.use(errorHandler);
