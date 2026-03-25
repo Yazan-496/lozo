@@ -1,0 +1,33 @@
+{
+  "name": "lozo-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.0",
+    "drizzle-orm": "^0.39.0",
+    "postgres": "^3.4.0",
+    "bcrypt": "^6.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "tsx": "^4.19.0",
+    "drizzle-kit": "^0.31.0",
+    "@types/express": "^5.0.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/cors": "^2.8.17",
+    "@types/node": "^22.0.0"
+  }
+}

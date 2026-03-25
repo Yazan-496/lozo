@@ -2,13 +2,16 @@
 
 ### Stack
 
-- Frontend: React Native (Expo or bare)
-- Backend: Node.js + Express
-- Realtime: Socket.IO (WebSockets)
-- DB: PostgreSQL or MongoDB
-- Local DB: SQLite / MMKV (offline-first)
-- Push: OneSignal
-- No Firebase — Syria-compatible services only
+- Frontend: React Native (Expo)
+- Backend: Node.js + Express (hosted on Koyeb)
+- Realtime: Socket.IO (single instance on Koyeb)
+- DB: PostgreSQL (Supabase, free tier)
+- ORM: Drizzle
+- File storage: Supabase Storage
+- Local DB: SQLite (messages) + MMKV (tokens/prefs)
+- Auth: Custom JWT (username + password)
+- Push: OneSignal (deferred until core messaging works)
+- No Firebase — Syria-compatible services only, all free tier
 
 ### Architecture rules
 
