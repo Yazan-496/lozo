@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, RefreshControl, StyleSheet } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Avatar } from '../../shared/components/Avatar';
+import { ConversationSkeleton } from '../../shared/components/ConversationSkeleton';
 import { api } from '../../shared/services/api';
 import { colors } from '../../shared/utils/theme';
 import type { Conversation } from '../../shared/types';
@@ -37,13 +38,16 @@ function getLastMessagePreview(conv: Conversation): string {
 export function ConversationsScreen({ navigation }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
   async function loadConversations() {
     try {
       const { data } = await api.get<Conversation[]>('/chat/conversations');
       setConversations(data);
+      if (isFirstLoad) setIsFirstLoad(false);
     } catch (err) {
       console.error('Failed to load conversations:', err);
+      if (isFirstLoad) setIsFirstLoad(false);
     }
   }
 
@@ -104,6 +108,10 @@ export function ConversationsScreen({ navigation }: Props) {
         </View>
       </TouchableOpacity>
     );
+  }
+
+  if (isFirstLoad && conversations.length === 0) {
+    return <ConversationSkeleton />;
   }
 
   return (

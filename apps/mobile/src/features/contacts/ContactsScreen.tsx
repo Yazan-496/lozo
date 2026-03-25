@@ -6,11 +6,12 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Avatar } from '../../shared/components/Avatar';
+import { ContactSkeleton } from '../../shared/components/ContactSkeleton';
+import { useToast } from '../../shared/components/Toast';
 import { api } from '../../shared/services/api';
 import { colors } from '../../shared/utils/theme';
 import type { Contact, PendingRequest, User } from '../../shared/types';
@@ -27,6 +28,8 @@ export function ContactsScreen({ navigation }: Props) {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const { showToast } = useToast();
 
   async function loadData() {
     try {
@@ -36,8 +39,10 @@ export function ContactsScreen({ navigation }: Props) {
       ]);
       setContacts(contactsRes.data);
       setPending(pendingRes.data);
+      if (isFirstLoad) setIsFirstLoad(false);
     } catch (err) {
       console.error('Failed to load contacts:', err);
+      if (isFirstLoad) setIsFirstLoad(false);
     }
   }
 
@@ -72,12 +77,12 @@ export function ContactsScreen({ navigation }: Props) {
   async function handleSendRequest(userId: string) {
     try {
       await api.post(`/contacts/request/${userId}`);
-      Alert.alert('Sent', 'Friend request sent!');
+      showToast('success', 'Friend request sent!');
       setSearchQuery('');
       setSearchResults([]);
       setSearching(false);
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Failed to send request');
+      showToast('error', err.response?.data?.error || 'Failed to send request');
     }
   }
 
@@ -86,7 +91,7 @@ export function ContactsScreen({ navigation }: Props) {
       await api.post(`/contacts/accept/${contactId}`);
       loadData();
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Failed');
+      showToast('error', err.response?.data?.error || 'Failed');
     }
   }
 
@@ -95,7 +100,7 @@ export function ContactsScreen({ navigation }: Props) {
       await api.post(`/contacts/reject/${contactId}`);
       loadData();
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Failed');
+      showToast('error', err.response?.data?.error || 'Failed');
     }
   }
 
@@ -104,8 +109,12 @@ export function ContactsScreen({ navigation }: Props) {
       const { data } = await api.post(`/chat/conversations/${userId}`);
       navigation.navigate('Chat', { conversationId: data.id, user });
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Failed');
+      showToast('error', err.response?.data?.error || 'Failed');
     }
+  }
+
+  if (isFirstLoad && contacts.length === 0 && pending.length === 0) {
+    return <ContactSkeleton />;
   }
 
   return (

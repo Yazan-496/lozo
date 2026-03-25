@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Alert, ScrollView, StyleSheet } from 'rea
 import { Avatar } from '../../shared/components/Avatar';
 import { Input } from '../../shared/components/Input';
 import { Button } from '../../shared/components/Button';
+import { useToast } from '../../shared/components/Toast';
 import { api } from '../../shared/services/api';
 import { useAuthStore } from '../../shared/stores/auth';
 import { disconnectSocket } from '../../shared/services/socket';
@@ -12,6 +13,7 @@ export function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
   const logout = useAuthStore((s) => s.logout);
+  const { showToast } = useToast();
 
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(user?.displayName || '');
@@ -25,7 +27,7 @@ export function ProfileScreen() {
       setUser(data);
       setEditing(false);
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Failed to update');
+      showToast('error', err.response?.data?.error || 'Failed to update');
     } finally {
       setLoading(false);
     }
@@ -101,7 +103,7 @@ export function ProfileScreen() {
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
-                Alert.alert('Coming Soon', 'Change password feature');
+                showToast('info', 'Coming soon');
               }}
             >
               <Text style={styles.menuText}>Change Password</Text>

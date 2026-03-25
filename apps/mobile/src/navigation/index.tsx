@@ -2,6 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../shared/stores/auth';
 import { colors } from '../shared/utils/theme';
 
@@ -20,14 +21,24 @@ const MainStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Chats: '💬',
-    Contacts: '👥',
-    Profile: '👤',
+  const iconMap: Record<string, { filled: string; outline: string }> = {
+    Chats: { filled: 'chatbubble', outline: 'chatbubble-outline' },
+    Contacts: { filled: 'people', outline: 'people-outline' },
+    Profile: { filled: 'person-circle', outline: 'person-circle-outline' },
   };
+
+  const iconName = focused ? iconMap[label]?.filled : iconMap[label]?.outline;
+  const iconColor = focused ? '#0084FF' : '#8A8D91';
+
   return (
-    <Text style={{ fontSize: 24, opacity: focused ? 1 : 0.4 }}>
-      {icons[label] || '•'}
+    <Ionicons name={iconName as any} size={24} color={iconColor} />
+  );
+}
+
+function TabLabel({ focused, label }: { focused: boolean; label: string }) {
+  return (
+    <Text style={{ fontSize: 11, fontWeight: focused ? '600' : '400', color: focused ? '#0084FF' : '#8A8D91' }}>
+      {label}
     </Text>
   );
 }
@@ -39,12 +50,9 @@ function HomeTabs() {
         tabBarIcon: ({ focused }) => (
           <TabIcon label={route.name} focused={focused} />
         ),
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.gray400,
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-        },
+        tabBarLabel: ({ focused }) => (
+          <TabLabel focused={focused} label={route.name} />
+        ),
         tabBarStyle: {
           borderTopColor: colors.border,
           borderTopWidth: 0.5,

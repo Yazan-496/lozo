@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, Alert, StyleSheet } from 'react-native';
+import { View, Text, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { Input } from '../../shared/components/Input';
 import { Button } from '../../shared/components/Button';
+import { useToast } from '../../shared/components/Toast';
 import { api } from '../../shared/services/api';
 import { useAuthStore } from '../../shared/stores/auth';
 import { colors } from '../../shared/utils/theme';
@@ -17,6 +18,7 @@ export function LoginScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
+  const { showToast } = useToast();
 
   async function handleLogin() {
     if (!username || !password) return;
@@ -25,7 +27,7 @@ export function LoginScreen({ navigation }: Props) {
       const { data } = await api.post<AuthResponse>('/auth/login', { username, password });
       setAuth(data.user, data.accessToken, data.refreshToken);
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Login failed');
+      showToast('error', err.response?.data?.error || 'Login failed');
     } finally {
       setLoading(false);
     }

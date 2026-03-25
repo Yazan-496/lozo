@@ -20,7 +20,8 @@
       "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(''expo:'', p.dependencies.expo\\); console.log\\(''react-native:'', p.dependencies[''react-native'']\\)\")",
       "Bash(npm uninstall:*)",
       "Bash(mkdir -p \".specify/features/001-full-messenger-clone/checklists\")",
-      "Bash(mkdir -p \".specify/templates\")"
+      "Bash(mkdir -p \".specify/templates\")",
+      "Bash(powershell.exe -File \".specify/scripts/powershell/create-new-feature.ps1\" -Json -ShortName \"message-actions\" \"Message Actions — Long-press context menu on chat messages\")"
     ]
   }
 }

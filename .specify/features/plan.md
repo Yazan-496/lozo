@@ -11,7 +11,7 @@
 | # | Feature | Status | Spec |
 |---|---------|--------|------|
 | 01 | UX Foundation — Icons, splash, toast, skeletons, error boundary, cleanup | Spec Ready | [spec.md](01-ux-foundation/spec.md) |
-| 02 | Message Actions — Long-press menu, reply, edit, delete, forward, copy | Pending | [spec.md](02-message-actions/spec.md) |
+| 02 | Message Actions — Long-press menu, reply, edit, delete, forward, copy | Spec Ready | [spec.md](02-message-actions/spec.md) |
 | 03 | Message Reactions — Emoji picker, reaction display, remove | Pending | [spec.md](03-message-reactions/spec.md) |
 | 04 | Media: Images — Gallery, camera, preview, send, viewer, download | Pending | [spec.md](04-media-images/spec.md) |
 | 05 | Media: Voice — Record, waveform, playback, send | Pending | [spec.md](05-media-voice/spec.md) |

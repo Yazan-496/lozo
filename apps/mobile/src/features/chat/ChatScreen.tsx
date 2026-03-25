@@ -7,10 +7,11 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { Avatar } from '../../shared/components/Avatar';
+import { MessageSkeleton } from '../../shared/components/MessageSkeleton';
+import { useToast } from '../../shared/components/Toast';
 import { api } from '../../shared/services/api';
 import { getSocket } from '../../shared/services/socket';
 import { useAuthStore } from '../../shared/stores/auth';
@@ -40,9 +41,11 @@ export function ChatScreen({ navigation, route }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = useAuthStore((s) => s.user);
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const { showToast } = useToast();
 
   useEffect(() => {
     navigation.setOptions({
@@ -72,8 +75,10 @@ export function ChatScreen({ navigation, route }: Props) {
         `/chat/conversations/${conversationId}/messages`,
       );
       setMessages(data);
+      if (isFirstLoad) setIsFirstLoad(false);
     } catch (err) {
       console.error('Failed to load messages:', err);
+      if (isFirstLoad) setIsFirstLoad(false);
     }
   }
 
@@ -228,7 +233,7 @@ export function ChatScreen({ navigation, route }: Props) {
           ]);
           setText('');
         } else {
-          Alert.alert('Error', response.error);
+          showToast('error', response.error);
         }
       },
     );
@@ -339,6 +344,10 @@ export function ChatScreen({ navigation, route }: Props) {
   }
 
   const canSend = text.trim().length > 0;
+
+  if (isFirstLoad && messages.length === 0) {
+    return <MessageSkeleton />;
+  }
 
   return (
     <KeyboardAvoidingView

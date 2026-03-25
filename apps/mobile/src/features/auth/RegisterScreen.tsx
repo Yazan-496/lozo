@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, Alert, StyleSheet } from 'react-native';
+import { View, Text, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { Input } from '../../shared/components/Input';
 import { Button } from '../../shared/components/Button';
+import { useToast } from '../../shared/components/Toast';
 import { api } from '../../shared/services/api';
 import { useAuthStore } from '../../shared/stores/auth';
 import { colors } from '../../shared/utils/theme';
@@ -18,16 +19,17 @@ export function RegisterScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
+  const { showToast } = useToast();
 
   async function handleRegister() {
     if (!username || !displayName || !password) return;
 
     if (username.length < 3) {
-      Alert.alert('Error', 'Username must be at least 3 characters');
+      showToast('error', 'Username must be at least 3 characters');
       return;
     }
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      showToast('error', 'Password must be at least 6 characters');
       return;
     }
 
@@ -40,7 +42,7 @@ export function RegisterScreen({ navigation }: Props) {
       });
       setAuth(data.user, data.accessToken, data.refreshToken);
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Registration failed');
+      showToast('error', err.response?.data?.error || 'Registration failed');
     } finally {
       setLoading(false);
     }
