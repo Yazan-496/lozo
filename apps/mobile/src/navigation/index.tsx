@@ -1,8 +1,9 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useAuthStore } from '../shared/stores/auth';
+import { colors } from '../shared/utils/theme';
 
 // Auth screens
 import { LoginScreen } from '../features/auth/LoginScreen';
@@ -25,7 +26,7 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
     Profile: '👤',
   };
   return (
-    <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.4 }}>
+    <Text style={{ fontSize: 24, opacity: focused ? 1 : 0.4 }}>
       {icons[label] || '•'}
     </Text>
   );
@@ -38,11 +39,26 @@ function HomeTabs() {
         tabBarIcon: ({ focused }) => (
           <TabIcon label={route.name} focused={focused} />
         ),
-        tabBarActiveTintColor: '#0084FF',
-        tabBarInactiveTintColor: '#8A8D91',
-        tabBarStyle: { borderTopColor: '#E4E6EB' },
-        headerStyle: { backgroundColor: '#fff' },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.gray400,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
+        tabBarStyle: {
+          borderTopColor: colors.border,
+          borderTopWidth: 0.5,
+          backgroundColor: colors.white,
+          paddingBottom: 4,
+          height: 56,
+        },
+        headerStyle: { backgroundColor: colors.white },
         headerShadowVisible: false,
+        headerTitleStyle: {
+          fontSize: 20,
+          fontWeight: '700',
+          color: colors.dark,
+        },
       })}
     >
       <Tab.Screen name="Chats" component={ConversationsScreen} />
@@ -74,8 +90,9 @@ function MainNavigator() {
         component={ChatScreen}
         options={{
           headerBackTitle: '',
-          headerStyle: { backgroundColor: '#fff' },
+          headerStyle: { backgroundColor: colors.white },
           headerShadowVisible: false,
+          headerTintColor: colors.primary,
         }}
       />
     </MainStack.Navigator>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  StyleSheet,
 } from 'react-native';
 import { Avatar } from '../../shared/components/Avatar';
 import { api } from '../../shared/services/api';
 import { getSocket } from '../../shared/services/socket';
 import { useAuthStore } from '../../shared/stores/auth';
+import { colors } from '../../shared/utils/theme';
 import type { Message, User } from '../../shared/types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -45,7 +47,7 @@ export function ChatScreen({ navigation, route }: Props) {
   useEffect(() => {
     navigation.setOptions({
       headerTitle: () => (
-        <View className="flex-row items-center">
+        <View style={styles.headerRow}>
           <Avatar
             uri={otherUser.avatarUrl}
             name={otherUser.displayName}
@@ -53,9 +55,9 @@ export function ChatScreen({ navigation, route }: Props) {
             size={36}
             isOnline={otherUser.isOnline}
           />
-          <View className="ml-2">
-            <Text className="text-base font-semibold">{otherUser.displayName}</Text>
-            <Text className="text-xs text-gray-400">
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerName}>{otherUser.displayName}</Text>
+            <Text style={styles.headerStatus}>
               {isTyping ? 'typing...' : otherUser.isOnline ? 'Online' : 'Offline'}
             </Text>
           </View>
@@ -78,17 +80,14 @@ export function ChatScreen({ navigation, route }: Props) {
   useEffect(() => {
     loadMessages();
 
-    // Mark as read
     api.post(`/chat/conversations/${conversationId}/read`).catch(() => {});
 
     const socket = getSocket();
     if (!socket) return;
 
-    // Listen for new messages in this conversation
     function onNewMessage(data: { message: Message; conversationId: string }) {
       if (data.conversationId === conversationId) {
         setMessages((prev) => [data.message, ...prev]);
-        // Mark as read immediately since we're viewing
         api.post(`/chat/conversations/${conversationId}/read`).catch(() => {});
         socket?.emit('messages:read', {
           conversationId,
@@ -234,7 +233,6 @@ export function ChatScreen({ navigation, route }: Props) {
       },
     );
 
-    // Stop typing
     socket.emit('typing:stop', {
       conversationId,
       recipientId: otherUser.id,
@@ -255,26 +253,25 @@ export function ChatScreen({ navigation, route }: Props) {
 
     if (item.deletedForEveryone) {
       return (
-        <View className={`mx-4 my-1 ${isMe ? 'items-end' : 'items-start'}`}>
-          <View className="bg-gray-100 px-4 py-2 rounded-2xl">
-            <Text className="text-gray-400 italic text-sm">Message deleted</Text>
+        <View style={[styles.messageRow, isMe ? styles.messageRowEnd : styles.messageRowStart]}>
+          <View style={styles.deletedBubble}>
+            <Text style={styles.deletedText}>Message deleted</Text>
           </View>
         </View>
       );
     }
 
     return (
-      <View className={`mx-4 my-1 ${isMe ? 'items-end' : 'items-start'}`}>
+      <View style={[styles.messageRow, isMe ? styles.messageRowEnd : styles.messageRowStart]}>
         {item.isForwarded && (
-          <Text className="text-xs text-gray-400 italic mb-0.5 mx-2">
-            Forwarded
-          </Text>
+          <Text style={styles.forwardedLabel}>Forwarded</Text>
         )}
         {item.replyTo && (
-          <View className={`mx-2 mb-0.5 px-3 py-1 rounded-lg border-l-2 ${
-            isMe ? 'bg-blue-50 border-primary' : 'bg-gray-50 border-gray-300'
-          }`}>
-            <Text className="text-xs text-gray-500" numberOfLines={1}>
+          <View style={[
+            styles.replyContainer,
+            isMe ? styles.replyContainerMe : styles.replyContainerOther,
+          ]}>
+            <Text style={styles.replyText} numberOfLines={1}>
               {item.replyTo.deletedForEveryone
                 ? 'Message deleted'
                 : item.replyTo.content || `[${item.replyTo.type}]`}
@@ -282,44 +279,46 @@ export function ChatScreen({ navigation, route }: Props) {
           </View>
         )}
         <View
-          className={`max-w-[80%] px-4 py-2 rounded-2xl ${
-            isMe ? 'bg-primary' : 'bg-gray-100'
-          }`}
+          style={[
+            styles.messageBubble,
+            isMe ? styles.bubbleMe : styles.bubbleOther,
+          ]}
         >
           {item.type === 'text' && (
-            <Text className={`text-base ${isMe ? 'text-white' : 'text-dark'}`}>
+            <Text style={[styles.messageText, isMe ? styles.textMe : styles.textOther]}>
               {item.content}
             </Text>
           )}
           {item.type === 'image' && (
-            <Text className={`text-base ${isMe ? 'text-white' : 'text-dark'}`}>
+            <Text style={[styles.messageText, isMe ? styles.textMe : styles.textOther]}>
               📷 {item.content || 'Photo'}
             </Text>
           )}
           {item.type === 'voice' && (
-            <Text className={`text-base ${isMe ? 'text-white' : 'text-dark'}`}>
+            <Text style={[styles.messageText, isMe ? styles.textMe : styles.textOther]}>
               🎤 Voice message
             </Text>
           )}
           {item.type === 'file' && (
-            <Text className={`text-base ${isMe ? 'text-white' : 'text-dark'}`}>
+            <Text style={[styles.messageText, isMe ? styles.textMe : styles.textOther]}>
               📎 {item.mediaName || 'File'}
             </Text>
           )}
-          <View className="flex-row justify-end items-center mt-0.5 gap-1">
+          <View style={styles.messageFooter}>
             {item.editedAt && (
-              <Text className={`text-[10px] ${isMe ? 'text-blue-200' : 'text-gray-400'}`}>
+              <Text style={[styles.metaText, isMe ? styles.metaMe : styles.metaOther]}>
                 edited
               </Text>
             )}
-            <Text className={`text-[10px] ${isMe ? 'text-blue-200' : 'text-gray-400'}`}>
+            <Text style={[styles.metaText, isMe ? styles.metaMe : styles.metaOther]}>
               {formatMessageTime(item.createdAt)}
             </Text>
             {isMe && item.status && (
               <Text
-                className={`text-[10px] ${
-                  item.status === 'read' ? 'text-blue-200' : isMe ? 'text-blue-300' : 'text-gray-400'
-                }`}
+                style={[
+                  styles.metaText,
+                  item.status === 'read' ? styles.statusRead : styles.metaMe,
+                ]}
               >
                 {getStatusIcon(item.status)}
               </Text>
@@ -327,9 +326,9 @@ export function ChatScreen({ navigation, route }: Props) {
           </View>
         </View>
         {item.reactions.length > 0 && (
-          <View className="flex-row mx-2 mt-0.5">
+          <View style={styles.reactionsRow}>
             {item.reactions.map((r, i) => (
-              <Text key={i} className="text-sm">
+              <Text key={i} style={styles.reactionEmoji}>
                 {r.emoji}
               </Text>
             ))}
@@ -339,10 +338,12 @@ export function ChatScreen({ navigation, route }: Props) {
     );
   }
 
+  const canSend = text.trim().length > 0;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      className="flex-1 bg-white"
+      style={styles.container}
       keyboardVerticalOffset={90}
     >
       <FlatList
@@ -351,10 +352,10 @@ export function ChatScreen({ navigation, route }: Props) {
         keyExtractor={(item) => item.id}
         renderItem={renderMessage}
         inverted
-        contentContainerStyle={{ paddingVertical: 8 }}
+        contentContainerStyle={styles.messagesList}
       />
 
-      <View className="flex-row items-center px-3 py-2 border-t border-gray-100">
+      <View style={styles.inputBar}>
         <TextInput
           value={text}
           onChangeText={(t) => {
@@ -362,19 +363,17 @@ export function ChatScreen({ navigation, route }: Props) {
             handleTyping();
           }}
           placeholder="Message..."
-          className="flex-1 bg-gray-50 px-4 py-2.5 rounded-full text-base mr-2"
-          placeholderTextColor="#8A8D91"
+          style={styles.textInput}
+          placeholderTextColor={colors.gray400}
           multiline
           maxLength={5000}
         />
         <TouchableOpacity
           onPress={handleSend}
-          disabled={!text.trim()}
-          className={`w-10 h-10 rounded-full items-center justify-center ${
-            text.trim() ? 'bg-primary' : 'bg-gray-100'
-          }`}
+          disabled={!canSend}
+          style={[styles.sendButton, canSend ? styles.sendActive : styles.sendInactive]}
         >
-          <Text className={`text-lg ${text.trim() ? 'text-white' : 'text-gray-400'}`}>
+          <Text style={[styles.sendIcon, canSend ? styles.sendIconActive : styles.sendIconInactive]}>
             ↑
           </Text>
         </TouchableOpacity>
@@ -382,3 +381,174 @@ export function ChatScreen({ navigation, route }: Props) {
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.white,
+  },
+  messagesList: {
+    paddingVertical: 8,
+  },
+  // Header
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerInfo: {
+    marginLeft: 8,
+  },
+  headerName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.dark,
+  },
+  headerStatus: {
+    fontSize: 12,
+    color: colors.gray400,
+  },
+  // Messages
+  messageRow: {
+    marginHorizontal: 16,
+    marginVertical: 2,
+  },
+  messageRowEnd: {
+    alignItems: 'flex-end',
+  },
+  messageRowStart: {
+    alignItems: 'flex-start',
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  bubbleMe: {
+    backgroundColor: colors.primary,
+  },
+  bubbleOther: {
+    backgroundColor: colors.gray50,
+  },
+  messageText: {
+    fontSize: 16,
+  },
+  textMe: {
+    color: colors.white,
+  },
+  textOther: {
+    color: colors.dark,
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 2,
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 10,
+  },
+  metaMe: {
+    color: 'rgba(255,255,255,0.6)',
+  },
+  metaOther: {
+    color: colors.gray400,
+  },
+  statusRead: {
+    color: 'rgba(255,255,255,0.8)',
+  },
+  // Deleted
+  deletedBubble: {
+    backgroundColor: colors.gray50,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  deletedText: {
+    color: colors.gray400,
+    fontStyle: 'italic',
+    fontSize: 14,
+  },
+  // Forwarded
+  forwardedLabel: {
+    fontSize: 12,
+    color: colors.gray400,
+    fontStyle: 'italic',
+    marginBottom: 2,
+    marginHorizontal: 8,
+  },
+  // Reply
+  replyContainer: {
+    marginHorizontal: 8,
+    marginBottom: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderLeftWidth: 2,
+  },
+  replyContainerMe: {
+    backgroundColor: 'rgba(0,132,255,0.1)',
+    borderLeftColor: colors.primary,
+  },
+  replyContainerOther: {
+    backgroundColor: colors.gray50,
+    borderLeftColor: colors.gray300,
+  },
+  replyText: {
+    fontSize: 12,
+    color: colors.gray500,
+  },
+  // Reactions
+  reactionsRow: {
+    flexDirection: 'row',
+    marginHorizontal: 8,
+    marginTop: 2,
+  },
+  reactionEmoji: {
+    fontSize: 14,
+  },
+  // Input bar
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray100,
+  },
+  textInput: {
+    flex: 1,
+    backgroundColor: colors.gray50,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    fontSize: 16,
+    marginRight: 8,
+    color: colors.dark,
+    maxHeight: 100,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendActive: {
+    backgroundColor: colors.primary,
+  },
+  sendInactive: {
+    backgroundColor: colors.gray100,
+  },
+  sendIcon: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  sendIconActive: {
+    color: colors.white,
+  },
+  sendIconInactive: {
+    color: colors.gray400,
+  },
+});

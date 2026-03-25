@@ -1,0 +1,61 @@
+# [PROJECT_NAME] Constitution
+
+**Version**: [CONSTITUTION_VERSION]
+**Ratified**: [RATIFICATION_DATE]
+**Last Amended**: [LAST_AMENDED_DATE]
+
+---
+
+## Mission
+
+[MISSION_STATEMENT]
+
+---
+
+## Principles
+
+### 1. [PRINCIPLE_1_NAME]
+
+[PRINCIPLE_1_DESCRIPTION]
+
+### 2. [PRINCIPLE_2_NAME]
+
+[PRINCIPLE_2_DESCRIPTION]
+
+### 3. [PRINCIPLE_3_NAME]
+
+[PRINCIPLE_3_DESCRIPTION]
+
+### 4. [PRINCIPLE_4_NAME]
+
+[PRINCIPLE_4_DESCRIPTION]
+
+### 5. [PRINCIPLE_5_NAME]
+
+[PRINCIPLE_5_DESCRIPTION]
+
+### 6. [PRINCIPLE_6_NAME]
+
+[PRINCIPLE_6_DESCRIPTION]
+
+---
+
+## Technology Constraints
+
+[TECHNOLOGY_CONSTRAINTS]
+
+---
+
+## Governance
+
+### Amendment Process
+
+[AMENDMENT_PROCESS]
+
+### Versioning Policy
+
+[VERSIONING_POLICY]
+
+### Compliance Review
+
+[COMPLIANCE_REVIEW]

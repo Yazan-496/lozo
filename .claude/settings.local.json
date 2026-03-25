@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp App.tsx apps/mobile/App.tsx)",
+      "Bash(cp index.ts apps/mobile/index.ts)",
+      "Bash(cp app.json apps/mobile/app.json)",
+      "Bash(cp tsconfig.json apps/mobile/tsconfig.json)",
+      "Bash(cp package.json apps/mobile/package.json)",
+      "Bash(cd:*)",
+      "Bash(npx skills:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsx -e \":*)",
+      "Bash(npx tsx:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(curl:*)",
+      "Bash(rm:*)",
+      "Bash(taskkill:*)",
+      "Bash(npx expo:*)",
+      "Bash(ipconfig)",
+      "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(''expo:'', p.dependencies.expo\\); console.log\\(''react-native:'', p.dependencies[''react-native'']\\)\")",
+      "Bash(npm uninstall:*)",
+      "Bash(mkdir -p \".specify/features/001-full-messenger-clone/checklists\")",
+      "Bash(mkdir -p \".specify/templates\")"
+    ]
+  }
+}

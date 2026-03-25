@@ -1,4 +1,5 @@
-import { TouchableOpacity, Text, ActivityIndicator } from 'react-native';
+import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { colors } from '../utils/theme';
 
 interface ButtonProps {
   title: string;
@@ -6,6 +7,7 @@ interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'ghost';
   loading?: boolean;
   disabled?: boolean;
+  size?: 'small' | 'medium' | 'large';
 }
 
 export function Button({
@@ -14,31 +16,55 @@ export function Button({
   variant = 'primary',
   loading = false,
   disabled = false,
+  size = 'large',
 }: ButtonProps) {
-  const baseStyle = 'py-3 px-6 rounded-full items-center justify-center';
-  const variantStyles = {
-    primary: 'bg-primary',
-    secondary: 'bg-gray-100',
-    ghost: 'bg-transparent',
-  };
-  const textStyles = {
-    primary: 'text-white font-semibold text-base',
-    secondary: 'text-dark font-semibold text-base',
-    ghost: 'text-primary font-semibold text-base',
-  };
+  const bgColor = {
+    primary: colors.primary,
+    secondary: colors.gray50,
+    ghost: 'transparent',
+  }[variant];
+
+  const textColor = {
+    primary: colors.white,
+    secondary: colors.dark,
+    ghost: colors.primary,
+  }[variant];
+
+  const paddingVertical = { small: 8, medium: 12, large: 14 }[size];
 
   return (
     <TouchableOpacity
-      className={`${baseStyle} ${variantStyles[variant]} ${disabled || loading ? 'opacity-50' : ''}`}
+      style={[
+        styles.button,
+        {
+          backgroundColor: bgColor,
+          paddingVertical,
+          opacity: disabled || loading ? 0.5 : 1,
+        },
+      ]}
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.7}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? '#fff' : '#0084FF'} />
+        <ActivityIndicator color={textColor} size="small" />
       ) : (
-        <Text className={textStyles[variant]}>{title}</Text>
+        <Text style={[styles.text, { color: textColor }]}>{title}</Text>
       )}
     </TouchableOpacity>
   );
 }
+
+const styles = StyleSheet.create({
+  button: {
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    marginVertical: 6,
+  },
+  text: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});

@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useAuthStore } from '../stores/auth';
 
 // Change this to your server URL
-const BASE_URL = 'http://localhost:5000';
+const BASE_URL = 'http://192.168.1.100:5000';
 
 export const api = axios.create({
   baseURL: `${BASE_URL}/api`,

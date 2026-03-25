@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ScrollView, StyleSheet } from 'react-native';
 import { Avatar } from '../../shared/components/Avatar';
 import { Input } from '../../shared/components/Input';
 import { Button } from '../../shared/components/Button';
 import { api } from '../../shared/services/api';
 import { useAuthStore } from '../../shared/stores/auth';
 import { disconnectSocket } from '../../shared/services/socket';
+import { colors } from '../../shared/utils/theme';
 
 export function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
@@ -47,20 +48,20 @@ export function ProfileScreen() {
   if (!user) return null;
 
   return (
-    <ScrollView className="flex-1 bg-white">
-      <View className="items-center pt-8 pb-6">
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
         <Avatar
           uri={user.avatarUrl}
           name={user.displayName}
           color={user.avatarColor}
           size={96}
         />
-        <Text className="text-xl font-bold text-dark mt-3">{user.displayName}</Text>
-        <Text className="text-gray-400">@{user.username}</Text>
-        <Text className="text-gray-500 mt-1">{user.bio}</Text>
+        <Text style={styles.displayName}>{user.displayName}</Text>
+        <Text style={styles.username}>@{user.username}</Text>
+        {user.bio ? <Text style={styles.bio}>{user.bio}</Text> : null}
       </View>
 
-      <View className="px-6">
+      <View style={styles.content}>
         {editing ? (
           <>
             <Input
@@ -90,26 +91,28 @@ export function ProfileScreen() {
         ) : (
           <>
             <TouchableOpacity
-              className="bg-gray-50 px-4 py-3.5 rounded-xl mb-3"
+              style={styles.menuItem}
               onPress={() => setEditing(true)}
             >
-              <Text className="text-base text-dark">Edit Profile</Text>
+              <Text style={styles.menuText}>Edit Profile</Text>
+              <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              className="bg-gray-50 px-4 py-3.5 rounded-xl mb-3"
+              style={styles.menuItem}
               onPress={() => {
                 Alert.alert('Coming Soon', 'Change password feature');
               }}
             >
-              <Text className="text-base text-dark">Change Password</Text>
+              <Text style={styles.menuText}>Change Password</Text>
+              <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              className="bg-gray-50 px-4 py-3.5 rounded-xl mb-6"
+              style={[styles.menuItem, styles.logoutItem]}
               onPress={handleLogout}
             >
-              <Text className="text-base text-red-500">Logout</Text>
+              <Text style={styles.logoutText}>Logout</Text>
             </TouchableOpacity>
           </>
         )}
@@ -117,3 +120,62 @@ export function ProfileScreen() {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.white,
+  },
+  header: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingBottom: 24,
+  },
+  displayName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.dark,
+    marginTop: 12,
+  },
+  username: {
+    fontSize: 15,
+    color: colors.gray400,
+    marginTop: 2,
+  },
+  bio: {
+    fontSize: 15,
+    color: colors.gray500,
+    marginTop: 6,
+    textAlign: 'center',
+    paddingHorizontal: 40,
+  },
+  content: {
+    paddingHorizontal: 24,
+  },
+  menuItem: {
+    backgroundColor: colors.gray50,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  menuText: {
+    fontSize: 16,
+    color: colors.dark,
+  },
+  menuArrow: {
+    fontSize: 20,
+    color: colors.gray400,
+    fontWeight: '600',
+  },
+  logoutItem: {
+    marginTop: 12,
+  },
+  logoutText: {
+    fontSize: 16,
+    color: colors.red,
+  },
+});

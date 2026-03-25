@@ -1,4 +1,5 @@
-import { TextInput, View, Text } from 'react-native';
+import { TextInput, View, Text, StyleSheet } from 'react-native';
+import { colors } from '../utils/theme';
 
 interface InputProps {
   value: string;
@@ -8,6 +9,7 @@ interface InputProps {
   secureTextEntry?: boolean;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   error?: string;
+  multiline?: boolean;
 }
 
 export function Input({
@@ -18,26 +20,54 @@ export function Input({
   secureTextEntry,
   autoCapitalize = 'none',
   error,
+  multiline,
 }: InputProps) {
   return (
-    <View className="mb-4">
-      {label && (
-        <Text className="text-gray-500 text-sm mb-1 ml-1">{label}</Text>
-      )}
+    <View style={styles.container}>
+      {label && <Text style={styles.label}>{label}</Text>}
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         secureTextEntry={secureTextEntry}
         autoCapitalize={autoCapitalize}
-        className={`bg-gray-50 px-4 py-3 rounded-xl text-base text-dark ${
-          error ? 'border border-red-500' : ''
-        }`}
-        placeholderTextColor="#8A8D91"
+        multiline={multiline}
+        style={[styles.input, error ? styles.inputError : null]}
+        placeholderTextColor={colors.gray400}
       />
-      {error && (
-        <Text className="text-red-500 text-xs mt-1 ml-1">{error}</Text>
-      )}
+      {error && <Text style={styles.error}>{error}</Text>}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    marginBottom: 16,
+  },
+  label: {
+    color: colors.gray500,
+    fontSize: 13,
+    marginBottom: 6,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  input: {
+    backgroundColor: colors.gray50,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    fontSize: 16,
+    color: colors.dark,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  inputError: {
+    borderColor: colors.red,
+  },
+  error: {
+    color: colors.red,
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+});

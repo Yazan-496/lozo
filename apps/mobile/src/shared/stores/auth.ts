@@ -1,8 +1,6 @@
 import { create } from 'zustand';
-import { MMKV } from 'react-native-mmkv';
+import * as SecureStore from 'expo-secure-store';
 import type { User } from '../types';
-
-const storage = new MMKV();
 
 interface AuthState {
   user: User | null;
@@ -26,27 +24,27 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
 
   setAuth: (user, accessToken, refreshToken) => {
-    storage.set('accessToken', accessToken);
-    storage.set('refreshToken', refreshToken);
-    storage.set('user', JSON.stringify(user));
+    SecureStore.setItemAsync('accessToken', accessToken);
+    SecureStore.setItemAsync('refreshToken', refreshToken);
+    SecureStore.setItemAsync('user', JSON.stringify(user));
     set({ user, accessToken, refreshToken, isAuthenticated: true });
   },
 
   setTokens: (accessToken, refreshToken) => {
-    storage.set('accessToken', accessToken);
-    storage.set('refreshToken', refreshToken);
+    SecureStore.setItemAsync('accessToken', accessToken);
+    SecureStore.setItemAsync('refreshToken', refreshToken);
     set({ accessToken, refreshToken });
   },
 
   setUser: (user) => {
-    storage.set('user', JSON.stringify(user));
+    SecureStore.setItemAsync('user', JSON.stringify(user));
     set({ user });
   },
 
   logout: () => {
-    storage.delete('accessToken');
-    storage.delete('refreshToken');
-    storage.delete('user');
+    SecureStore.deleteItemAsync('accessToken');
+    SecureStore.deleteItemAsync('refreshToken');
+    SecureStore.deleteItemAsync('user');
     set({
       user: null,
       accessToken: null,
@@ -55,10 +53,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     });
   },
 
-  hydrate: () => {
-    const accessToken = storage.getString('accessToken') || null;
-    const refreshToken = storage.getString('refreshToken') || null;
-    const userStr = storage.getString('user');
+  hydrate: async () => {
+    const accessToken = await SecureStore.getItemAsync('accessToken');
+    const refreshToken = await SecureStore.getItemAsync('refreshToken');
+    const userStr = await SecureStore.getItemAsync('user');
     const user = userStr ? JSON.parse(userStr) : null;
 
     set({

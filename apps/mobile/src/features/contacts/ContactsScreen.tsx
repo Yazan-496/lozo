@@ -7,10 +7,12 @@ import {
   TextInput,
   RefreshControl,
   Alert,
+  StyleSheet,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Avatar } from '../../shared/components/Avatar';
 import { api } from '../../shared/services/api';
+import { colors } from '../../shared/utils/theme';
 import type { Contact, PendingRequest, User } from '../../shared/types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -107,26 +109,26 @@ export function ContactsScreen({ navigation }: Props) {
   }
 
   return (
-    <View className="flex-1 bg-white">
+    <View style={styles.container}>
       {/* Search bar */}
-      <View className="px-4 py-2">
+      <View style={styles.searchContainer}>
         <TextInput
           value={searchQuery}
           onChangeText={handleSearch}
           placeholder="Search users..."
-          className="bg-gray-50 px-4 py-2.5 rounded-full text-base"
-          placeholderTextColor="#8A8D91"
+          style={styles.searchInput}
+          placeholderTextColor={colors.gray400}
         />
       </View>
 
       {/* Search results */}
       {searching && searchResults.length > 0 && (
-        <View className="px-4 pb-2">
-          <Text className="text-xs text-gray-400 mb-2 uppercase">Search Results</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Search Results</Text>
           {searchResults.map((user) => (
             <TouchableOpacity
               key={user.id}
-              className="flex-row items-center py-2"
+              style={styles.userRow}
               onPress={() => handleSendRequest(user.id)}
             >
               <Avatar
@@ -135,11 +137,11 @@ export function ContactsScreen({ navigation }: Props) {
                 color={user.avatarColor}
                 size={44}
               />
-              <View className="flex-1 ml-3">
-                <Text className="text-base font-medium text-dark">{user.displayName}</Text>
-                <Text className="text-sm text-gray-400">@{user.username}</Text>
+              <View style={styles.userInfo}>
+                <Text style={styles.userName}>{user.displayName}</Text>
+                <Text style={styles.userHandle}>@{user.username}</Text>
               </View>
-              <Text className="text-primary text-sm font-medium">Add</Text>
+              <Text style={styles.addText}>Add</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -156,35 +158,35 @@ export function ContactsScreen({ navigation }: Props) {
           <>
             {/* Pending requests */}
             {pending.length > 0 && (
-              <View className="px-4 pb-2">
-                <Text className="text-xs text-gray-400 mb-2 uppercase">
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
                   Friend Requests ({pending.length})
                 </Text>
                 {pending.map((req) => (
-                  <View key={req.contactId} className="flex-row items-center py-2">
+                  <View key={req.contactId} style={styles.userRow}>
                     <Avatar
                       uri={req.from.avatarUrl}
                       name={req.from.displayName}
                       color={req.from.avatarColor}
                       size={44}
                     />
-                    <View className="flex-1 ml-3">
-                      <Text className="text-base font-medium text-dark">
+                    <View style={styles.userInfo}>
+                      <Text style={styles.userName}>
                         {req.from.displayName}
                       </Text>
-                      <Text className="text-sm text-gray-400">@{req.from.username}</Text>
+                      <Text style={styles.userHandle}>@{req.from.username}</Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => handleAccept(req.contactId)}
-                      className="bg-primary px-4 py-1.5 rounded-full mr-2"
+                      style={styles.acceptButton}
                     >
-                      <Text className="text-white text-sm font-medium">Accept</Text>
+                      <Text style={styles.acceptText}>Accept</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleReject(req.contactId)}
-                      className="bg-gray-100 px-3 py-1.5 rounded-full"
+                      style={styles.declineButton}
                     >
-                      <Text className="text-gray-500 text-sm">Decline</Text>
+                      <Text style={styles.declineText}>Decline</Text>
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -192,19 +194,19 @@ export function ContactsScreen({ navigation }: Props) {
             )}
 
             {/* Contacts list */}
-            <View className="px-4">
-              <Text className="text-xs text-gray-400 mb-2 uppercase">
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
                 Contacts ({contacts.length})
               </Text>
               {contacts.length === 0 && (
-                <Text className="text-gray-400 text-center py-8">
+                <Text style={styles.emptyText}>
                   No contacts yet. Search for users above!
                 </Text>
               )}
               {contacts.map((contact) => (
                 <TouchableOpacity
                   key={contact.contactId}
-                  className="flex-row items-center py-2"
+                  style={styles.userRow}
                   onPress={() => openChat(contact.user.id, contact.user)}
                 >
                   <Avatar
@@ -214,11 +216,11 @@ export function ContactsScreen({ navigation }: Props) {
                     size={48}
                     isOnline={contact.user.isOnline}
                   />
-                  <View className="flex-1 ml-3">
-                    <Text className="text-base font-medium text-dark">
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>
                       {contact.nickname || contact.user.displayName}
                     </Text>
-                    <Text className="text-sm text-gray-400">
+                    <Text style={styles.userHandle}>
                       {contact.user.isOnline ? 'Online' : contact.user.bio}
                     </Text>
                   </View>
@@ -231,3 +233,86 @@ export function ContactsScreen({ navigation }: Props) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.white,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    backgroundColor: colors.gray50,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    fontSize: 16,
+    color: colors.dark,
+  },
+  section: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    color: colors.gray400,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.dark,
+  },
+  userHandle: {
+    fontSize: 14,
+    color: colors.gray400,
+    marginTop: 1,
+  },
+  addText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  acceptButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginRight: 8,
+  },
+  acceptText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  declineButton: {
+    backgroundColor: colors.gray100,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  declineText: {
+    color: colors.gray500,
+    fontSize: 14,
+  },
+  emptyText: {
+    color: colors.gray400,
+    textAlign: 'center',
+    paddingVertical: 32,
+    fontSize: 15,
+  },
+});

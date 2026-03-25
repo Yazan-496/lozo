@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
+import { useState, useCallback } from 'react';
+import { View, Text, FlatList, TouchableOpacity, RefreshControl, StyleSheet } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Avatar } from '../../shared/components/Avatar';
 import { api } from '../../shared/services/api';
+import { colors } from '../../shared/utils/theme';
 import type { Conversation } from '../../shared/types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -63,7 +64,7 @@ export function ConversationsScreen({ navigation }: Props) {
 
     return (
       <TouchableOpacity
-        className="flex-row items-center px-4 py-3"
+        style={styles.conversationRow}
         activeOpacity={0.6}
         onPress={() =>
           navigation.navigate('Chat', {
@@ -79,26 +80,24 @@ export function ConversationsScreen({ navigation }: Props) {
           size={56}
           isOnline={otherUser.isOnline}
         />
-        <View className="flex-1 ml-3">
-          <View className="flex-row justify-between items-center">
-            <Text className="text-base font-semibold text-dark" numberOfLines={1}>
+        <View style={styles.conversationInfo}>
+          <View style={styles.conversationTop}>
+            <Text style={styles.conversationName} numberOfLines={1}>
               {otherUser.displayName}
             </Text>
             {item.lastMessage && (
-              <Text className="text-xs text-gray-400">
+              <Text style={styles.conversationTime}>
                 {formatTime(item.lastMessage.createdAt)}
               </Text>
             )}
           </View>
-          <View className="flex-row justify-between items-center mt-1">
-            <Text className="text-sm text-gray-400 flex-1 mr-2" numberOfLines={1}>
+          <View style={styles.conversationBottom}>
+            <Text style={styles.conversationPreview} numberOfLines={1}>
               {getLastMessagePreview(item)}
             </Text>
             {item.unreadCount > 0 && (
-              <View className="bg-primary rounded-full min-w-[20px] h-5 items-center justify-center px-1.5">
-                <Text className="text-white text-xs font-bold">
-                  {item.unreadCount}
-                </Text>
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadText}>{item.unreadCount}</Text>
               </View>
             )}
           </View>
@@ -108,7 +107,7 @@ export function ConversationsScreen({ navigation }: Props) {
   }
 
   return (
-    <View className="flex-1 bg-white">
+    <View style={styles.container}>
       <FlatList
         data={conversations}
         keyExtractor={(item) => item.id}
@@ -117,9 +116,9 @@ export function ConversationsScreen({ navigation }: Props) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         ListEmptyComponent={
-          <View className="flex-1 items-center justify-center pt-20">
-            <Text className="text-gray-400 text-base">No conversations yet</Text>
-            <Text className="text-gray-300 text-sm mt-1">
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>No conversations yet</Text>
+            <Text style={styles.emptySubtitle}>
               Add contacts to start chatting
             </Text>
           </View>
@@ -128,3 +127,76 @@ export function ConversationsScreen({ navigation }: Props) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.white,
+  },
+  conversationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  conversationInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  conversationTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  conversationName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.dark,
+    flex: 1,
+  },
+  conversationTime: {
+    fontSize: 12,
+    color: colors.gray400,
+    marginLeft: 8,
+  },
+  conversationBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  conversationPreview: {
+    fontSize: 14,
+    color: colors.gray400,
+    flex: 1,
+    marginRight: 8,
+  },
+  unreadBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  unreadText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+  },
+  emptyTitle: {
+    color: colors.gray400,
+    fontSize: 16,
+  },
+  emptySubtitle: {
+    color: colors.gray300,
+    fontSize: 14,
+    marginTop: 4,
+  },
+});

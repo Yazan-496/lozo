@@ -1,4 +1,5 @@
-import { View, Text, Image } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
+import { colors } from '../utils/theme';
 
 interface AvatarProps {
   uri?: string | null;
@@ -11,9 +12,10 @@ interface AvatarProps {
 export function Avatar({ uri, name, color, size = 48, isOnline }: AvatarProps) {
   const fontSize = size * 0.4;
   const initial = name.charAt(0).toUpperCase();
+  const dotSize = size * 0.26;
 
   return (
-    <View style={{ width: size, height: size, position: 'relative' }}>
+    <View style={{ width: size, height: size }}>
       {uri ? (
         <Image
           source={{ uri }}
@@ -34,7 +36,7 @@ export function Avatar({ uri, name, color, size = 48, isOnline }: AvatarProps) {
             justifyContent: 'center',
           }}
         >
-          <Text style={{ color: '#fff', fontSize, fontWeight: '600' }}>
+          <Text style={{ color: '#fff', fontSize, fontWeight: '700' }}>
             {initial}
           </Text>
         </View>
@@ -45,12 +47,12 @@ export function Avatar({ uri, name, color, size = 48, isOnline }: AvatarProps) {
             position: 'absolute',
             bottom: 0,
             right: 0,
-            width: size * 0.28,
-            height: size * 0.28,
-            borderRadius: size * 0.14,
-            backgroundColor: isOnline ? '#4CAF50' : '#9E9E9E',
-            borderWidth: 2,
-            borderColor: '#fff',
+            width: dotSize,
+            height: dotSize,
+            borderRadius: dotSize / 2,
+            backgroundColor: isOnline ? colors.green : colors.gray300,
+            borderWidth: 2.5,
+            borderColor: colors.white,
           }}
         />
       )}
