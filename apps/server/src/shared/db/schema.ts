@@ -24,12 +24,24 @@ export const contacts = pgTable('contacts', {
   addresseeId: uuid('addressee_id').notNull().references(() => users.id),
   status: contactStatusEnum('status').notNull().default('pending'),
   nickname: varchar('nickname', { length: 100 }),
+  myNickname: varchar('my_nickname', { length: 100 }),
+  relationshipType: varchar('relationship_type', { length: 10 }).notNull().default('friend'),
   isMuted: boolean('is_muted').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [
   // One relationship per pair of users
   uniqueIndex('unique_contact_pair').on(table.requesterId, table.addresseeId),
+]);
+
+// Track user blocks — one-sided, independent of contact status
+export const blockedUsers = pgTable('blocked_users', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  blockerId: uuid('blocker_id').notNull().references(() => users.id),
+  blockedId: uuid('blocked_id').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('unique_block_pair').on(table.blockerId, table.blockedId),
 ]);
 
 // 1:1 conversation between two users

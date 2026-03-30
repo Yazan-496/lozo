@@ -13,6 +13,8 @@ export interface User {
 export interface Contact {
   contactId: string;
   nickname: string | null;
+  myNickname: string | null;
+  relationshipType: 'friend' | 'lover';
   isMuted: boolean;
   user: User;
   since: string;
@@ -24,8 +26,12 @@ export interface PendingRequest {
   createdAt: string;
 }
 
+export type SyncStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+
 export interface Message {
   id: string;
+  localId?: string;
+  syncStatus?: SyncStatus;
   conversationId: string;
   senderId: string;
   type: 'text' | 'image' | 'voice' | 'file';
@@ -41,7 +47,7 @@ export interface Message {
   deletedForEveryone: boolean;
   createdAt: string;
   reactions: Reaction[];
-  replyTo: ReplyTo | null;
+  replyTo?: ReplyTo | null;
   status: 'sent' | 'delivered' | 'read' | null;
 }
 
@@ -69,6 +75,7 @@ export interface Conversation {
     isForwarded: boolean;
     deletedForEveryone: boolean;
     createdAt: string;
+    status: 'sent' | 'delivered' | 'read' | null;
   } | null;
   unreadCount: number;
   updatedAt: string;
@@ -79,3 +86,20 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
 }
+
+export type RootStackParamList = {
+  Home: undefined;
+  Chat: {
+    conversationId: string;
+    otherUser?: User;
+    user?: User;
+    relationshipType?: 'friend' | 'lover';
+  };
+  Settings: undefined;
+  ContactProfile: {
+    contactId: string;
+    otherUser: User;
+    conversationId?: string;
+    relationshipType?: 'friend' | 'lover';
+  };
+};

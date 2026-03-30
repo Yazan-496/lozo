@@ -11,6 +11,9 @@ import {
   searchUsers,
   setNickname,
   toggleMute,
+  setMyNickname,
+  setRelationshipType,
+  removeContact,
 } from './contacts.service';
 
 const router = Router();
@@ -99,6 +102,39 @@ router.put('/:contactId/mute', async (req, res, next) => {
   try {
     const contact = await toggleMute(req.params.contactId, req.user!.userId);
     res.json(contact);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/:contactId/myNickname', async (req, res, next) => {
+  try {
+    const { myNickname } = req.body;
+    const contact = await setMyNickname(req.params.contactId, req.user!.userId, myNickname || null);
+    res.json(contact);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/:contactId/relationship', async (req, res, next) => {
+  try {
+    const { relationshipType } = req.body;
+    const contact = await setRelationshipType(
+      req.params.contactId,
+      req.user!.userId,
+      relationshipType,
+    );
+    res.json(contact);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:contactId', async (req, res, next) => {
+  try {
+    const result = await removeContact(req.params.contactId, req.user!.userId);
+    res.json(result);
   } catch (err) {
     next(err);
   }

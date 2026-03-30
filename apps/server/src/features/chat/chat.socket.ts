@@ -20,7 +20,14 @@ export function getOnlineUsers() {
   return onlineUsers;
 }
 
+let _io: Server | null = null;
+
+export function getIo(): Server | null {
+  return _io;
+}
+
 export function setupChatSocket(io: Server) {
+  _io = io;
   // Auth middleware for Socket.IO
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
@@ -75,7 +82,8 @@ export function setupChatSocket(io: Server) {
           });
         }
 
-        callback?.({ success: true, message: result.message });
+        // Echo back localId for client reconciliation
+        callback?.({ success: true, message: { ...result.message, localId: data.localId } });
       } catch (err: any) {
         callback?.({ success: false, error: err.message });
       }

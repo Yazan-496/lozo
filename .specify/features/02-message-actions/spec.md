@@ -217,9 +217,17 @@ Currently, users can only read messages — there is no way to reply to a specif
 1. The existing `message.replyTo` field already exists on the message type (server sends it)
 2. The 15-minute edit window and 1-hour delete window are enforced on both client and server
 3. Swipe-to-reply uses the existing `react-native-gesture-handler` — no new package needed
-4. Clipboard access uses `@react-native-clipboard/clipboard` or the built-in `Clipboard` from `react-native` (to be confirmed during planning)
+4. Clipboard access uses `expo-clipboard` (`Clipboard.setStringAsync`) — the only Expo Go-compatible option; `@react-native-clipboard/clipboard` requires native linking not available in Expo Go
 5. Forward uses the existing conversations list API — no new endpoint needed
 6. The "React" action in the menu is a placeholder that will be wired up in Spec 03
+
+---
+
+## Clarifications
+
+### Session 2026-03-25
+
+- Q: Which clipboard package to use given Expo Go constraint? → A: `expo-clipboard` — only Expo Go-compatible option; native packages require linking not available in Expo Go SDK 54
 
 ---
 
@@ -239,7 +247,7 @@ Currently, users can only read messages — there is no way to reply to a specif
 - Spec 01 (UX Foundation) — toast system required for copy confirmation and forward confirmation
 - Server endpoints: `PUT /chat/messages/:id/edit`, `DELETE /chat/messages/:id?forEveryone=true`
 - `react-native-gesture-handler` (already installed) — for swipe-to-reply
-- Clipboard API — built-in or `@react-native-clipboard/clipboard`
+- `expo-clipboard` — Expo Go-compatible clipboard package
 
 ---
 
