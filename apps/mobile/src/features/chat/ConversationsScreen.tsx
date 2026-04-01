@@ -126,15 +126,19 @@ export function ConversationsScreen({ navigation }: Props) {
             }
 
             function onMessageStatus(data: { conversationId: string; status: string }) {
+                const STATUS_ORDER = ['sent', 'delivered', 'read'];
                 setConversations((prev) =>
-                    prev.map((conv) =>
-                        conv.id === data.conversationId && conv.lastMessage
-                            ? {
-                                  ...conv,
-                                  lastMessage: { ...conv.lastMessage, status: data.status as any },
-                              }
-                            : conv,
-                    ),
+                    prev.map((conv) => {
+                        if (conv.id !== data.conversationId || !conv.lastMessage) return conv;
+                        // Regression guard: never downgrade status
+                        const currentIdx = STATUS_ORDER.indexOf(conv.lastMessage.status ?? '');
+                        const nextIdx = STATUS_ORDER.indexOf(data.status);
+                        if (nextIdx <= currentIdx) return conv;
+                        return {
+                            ...conv,
+                            lastMessage: { ...conv.lastMessage, status: data.status as any },
+                        };
+                    }),
                 );
             }
 
@@ -216,6 +220,12 @@ export function ConversationsScreen({ navigation }: Props) {
                                 color={otherUser.avatarColor}
                                 size={14}
                             />
+                        ) : item.lastMessage?.senderId === currentUser?.id &&
+                          item.lastMessage?.status === 'delivered' ? (
+                            <Text style={styles.conversationTime}>Delivered</Text>
+                        ) : item.lastMessage?.senderId === currentUser?.id &&
+                          item.lastMessage?.status === 'sent' ? (
+                            <Text style={styles.conversationTime}>Sent</Text>
                         ) : item.unreadCount > 0 ? (
                             <View style={styles.unreadBadge}>
                                 <Text style={styles.unreadText}>{item.unreadCount}</Text>

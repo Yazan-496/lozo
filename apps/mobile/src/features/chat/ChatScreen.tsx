@@ -277,16 +277,23 @@ export function ChatScreen({ navigation, route }: Props) {
             const { data } = await api.get<Message[]>(
                 `/chat/conversations/${conversationId}/messages`,
             );
-            // Ensure server data is sorted newest-first to match local cache and inverted FlatList
-            setMessages(
-                data.sort(
-                    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-                ),
+            const sorted = data.sort(
+                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
             );
             // Persist server messages to SQLite
-            for (const msg of data) {
+            for (const msg of sorted) {
                 void upsertServerMessage(msg, currentUser?.id);
             }
+            // Merge server data: keep any optimistic (unsent) messages not yet on server,
+            // then fill in with server data — avoids wiping pending outbox messages
+            setMessages((prev) => {
+                const pendingLocal = prev.filter(
+                    (m) => m.syncStatus === 'pending' || m.syncStatus === 'failed',
+                );
+                const serverIds = new Set(sorted.map((m) => m.id));
+                const stillPending = pendingLocal.filter((m) => !serverIds.has(m.id));
+                return [...stillPending, ...sorted];
+            });
             if (isFirstLoad) setIsFirstLoad(false);
         } catch (err) {
             console.error('Failed to load messages from server:', err);
@@ -329,6 +336,9 @@ export function ChatScreen({ navigation, route }: Props) {
             if (data.conversationId === conversationId) {
                 // Persist to SQLite
                 void upsertServerMessage(data.message, currentUser?.id);
+                // Own messages are already in state from optimistic send;
+                // onMessageSynced handles the localId→serverId update — skip here to avoid duplicates
+                if (data.message.senderId === currentUser?.id) return;
                 setMessages((prev) => [
                     {
                         ...data.message,
@@ -404,9 +414,14 @@ export function ChatScreen({ navigation, route }: Props) {
         function onMessageStatus(data: { conversationId: string; status: string; userId: string }) {
             if (data.conversationId === conversationId) {
                 setMessages((prev) =>
-                    prev.map((m) =>
-                        m.senderId === currentUser?.id ? { ...m, status: data.status as any } : m,
-                    ),
+                    prev.map((m) => {
+                        if (m.senderId !== currentUser?.id) return m;
+                        // Regression guard: never downgrade status (e.g. late 'delivered' must not overwrite 'seen')
+                        const currentIdx = STATUS_ORDER.indexOf(m.status as any ?? '');
+                        const nextIdx = STATUS_ORDER.indexOf(data.status as any);
+                        if (nextIdx <= currentIdx) return m;
+                        return { ...m, status: data.status as any };
+                    }),
                 );
             }
         }
@@ -435,6 +450,10 @@ export function ChatScreen({ navigation, route }: Props) {
             socket.off('conversation:deleted', onConversationDeleted);
         };
     }, [conversationId, chatUser?.id]);
+
+    // Status progression order — used as regression guard in onMessageStatus handlers
+    // Server emits 'delivered' and 'read' (not 'seen')
+    const STATUS_ORDER = ['sent', 'delivered', 'read'] as const;
 
     async function loadOlderMessages() {
         if (loadingOlder || !hasMoreOlder) return;
