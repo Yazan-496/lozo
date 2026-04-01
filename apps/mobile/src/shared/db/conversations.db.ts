@@ -59,3 +59,36 @@ export async function syncConversations(convs: Conversation[]): Promise<void> {
   );
   await upsertConversations(convs);
 }
+
+// ── Drafts ────────────────────────────────────────────────────────────────────
+
+export async function saveDraft(conversationId: string, text: string): Promise<void> {
+  const db = getDb();
+  const truncated = text.slice(0, 5000);
+  await db.runAsync(
+    `INSERT OR REPLACE INTO drafts (conversation_id, text, updated_at) VALUES (?, ?, ?)`,
+    [conversationId, truncated, Date.now()],
+  );
+}
+
+export async function getDraft(conversationId: string): Promise<string | null> {
+  const db = getDb();
+  const row = await db.getFirstAsync<{ text: string }>(
+    `SELECT text FROM drafts WHERE conversation_id = ?`,
+    [conversationId],
+  );
+  return row?.text ?? null;
+}
+
+export async function clearDraft(conversationId: string): Promise<void> {
+  const db = getDb();
+  await db.runAsync(`DELETE FROM drafts WHERE conversation_id = ?`, [conversationId]);
+}
+
+export async function getAllDrafts(): Promise<Record<string, string>> {
+  const db = getDb();
+  const rows = await db.getAllAsync<{ conversation_id: string; text: string }>(
+    `SELECT conversation_id, text FROM drafts`,
+  );
+  return Object.fromEntries(rows.map((r) => [r.conversation_id, r.text]));
+}

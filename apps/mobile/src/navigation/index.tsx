@@ -22,6 +22,7 @@ import { NotificationsScreen } from '../features/notifications/NotificationsScre
 import { ProfileScreen } from '../features/profile/ProfileScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { UserProfileScreen } from '../features/contacts/UserProfileScreen';
+import { MediaGalleryScreen } from '../features/chat/MediaGalleryScreen';
 
 const AuthStack = createNativeStackNavigator();
 const MainStack = createNativeStackNavigator();
@@ -190,6 +191,18 @@ function MainNavigator() {
                     headerStyle: { backgroundColor: colors.bg },
                     headerShadowVisible: false,
                     headerTintColor: colors.primary,
+                }}
+            />
+            <MainStack.Screen
+                name="MediaGallery"
+                component={MediaGalleryScreen}
+                options={{
+                    title: 'Media',
+                    headerBackTitle: '',
+                    headerStyle: { backgroundColor: colors.bg },
+                    headerShadowVisible: false,
+                    headerTintColor: colors.primary,
+                    headerTitleStyle: { color: colors.dark },
                 }}
             />
         </MainStack.Navigator>

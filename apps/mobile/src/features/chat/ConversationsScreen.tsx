@@ -1,12 +1,17 @@
-import { useMemo, useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, RefreshControl, StyleSheet } from 'react-native';
+import { useMemo, useState, useCallback, useEffect } from 'react';
+import { View, Text, FlatList, TouchableOpacity, RefreshControl, StyleSheet, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '../../shared/components/Avatar';
 import { ConversationSkeleton } from '../../shared/components/ConversationSkeleton';
 import { OfflineBanner } from '../../shared/components/OfflineBanner';
 import { ConversationActionSheet } from './components/ConversationActionSheet';
+import { SearchBar } from './components/SearchBar';
+import { SearchResults } from './components/SearchResults';
 import { api } from '../../shared/services/api';
 import { getSocket } from '../../shared/services/socket';
+import { searchMessages } from '../../shared/db/search.db.ts';
+import { checkFtsHealth, rebuildFtsIndex } from '../../shared/db/fts-repair';
 import { useAuthStore } from '../../shared/stores/auth';
 import { usePresenceStore } from '../../shared/stores/presence';
 import { useNotificationsStore } from '../../shared/stores/notifications';
@@ -17,9 +22,10 @@ import {
     getCachedConversations,
     syncConversations,
     hideCachedConversation,
+    getAllDrafts,
 } from '../../shared/db/conversations.db.ts';
 import type { ThemeColors } from '../../shared/utils/theme';
-import type { Conversation } from '../../shared/types';
+import type { Conversation, SearchResult } from '../../shared/types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 interface Props {
@@ -57,6 +63,10 @@ export function ConversationsScreen({ navigation }: Props) {
     const [refreshing, setRefreshing] = useState(false);
     const [isFirstLoad, setIsFirstLoad] = useState(true);
     const [actionSheetConv, setActionSheetConv] = useState<Conversation | null>(null);
+    const [drafts, setDrafts] = useState<Record<string, string>>({});
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
     const currentUser = useAuthStore((s) => s.user);
     const onlineUserIds = usePresenceStore((s) => s.onlineUserIds);
@@ -117,6 +127,14 @@ export function ConversationsScreen({ navigation }: Props) {
     useFocusEffect(
         useCallback(() => {
             loadConversations();
+            // Reload drafts whenever screen comes into focus
+            getAllDrafts()
+                .then(setDrafts)
+                .catch(() => {});
+            // Close search on back-navigation
+            setIsSearching(false);
+            setSearchQuery('');
+            setSearchResults([]);
 
             const socket = getSocket();
             if (!socket) return;
@@ -166,6 +184,53 @@ export function ConversationsScreen({ navigation }: Props) {
         setRefreshing(false);
     }
 
+    async function handleSearch(query: string) {
+        setSearchQuery(query);
+        if (query.trim().length < 3) {
+            setSearchResults([]);
+            return;
+        }
+        
+        // Auto-check FTS health before searching
+        const health = await checkFtsHealth();
+        if (health.needsRebuild) {
+            Alert.alert(
+                'Search Index Needs Repair',
+                `Found ${health.messagesCount} messages but FTS index is empty. Rebuild now?`,
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Rebuild',
+                        onPress: async () => {
+                            try {
+                                await rebuildFtsIndex();
+                                Alert.alert('Success', 'Search index rebuilt successfully');
+                                const results = await searchMessages(query);
+                                setSearchResults(results);
+                            } catch (err) {
+                                Alert.alert('Error', 'Failed to rebuild search index');
+                            }
+                        },
+                    },
+                ],
+            );
+            return;
+        }
+        
+        const results = await searchMessages(query);
+        setSearchResults(results);
+    }
+
+    function handleSearchResultSelect(result: SearchResult) {
+        setIsSearching(false);
+        setSearchQuery('');
+        setSearchResults([]);
+        navigation.navigate('Chat', {
+            conversationId: result.conversationId,
+            highlightMessageId: result.messageId,
+        });
+    }
+
     function renderConversation({ item }: { item: Conversation }) {
         const { otherUser } = item;
         const displayName = contactNicknameMap[otherUser.id] || otherUser.displayName;
@@ -205,9 +270,18 @@ export function ConversationsScreen({ navigation }: Props) {
                         )}
                     </View>
                     <View style={styles.conversationBottom}>
-                        <Text style={styles.conversationPreview} numberOfLines={1}>
-                            {getLastMessagePreview(item)}
-                        </Text>
+                        {drafts[item.id] ? (
+                            <Text
+                                style={[styles.conversationPreview, styles.draftPreview]}
+                                numberOfLines={1}
+                            >
+                                {'Draft: ' + drafts[item.id]}
+                            </Text>
+                        ) : (
+                            <Text style={styles.conversationPreview} numberOfLines={1}>
+                                {getLastMessagePreview(item)}
+                            </Text>
+                        )}
                         {item.lastMessage?.senderId === currentUser?.id &&
                         item.lastMessage?.status === 'read' ? (
                             <Avatar
@@ -249,26 +323,65 @@ export function ConversationsScreen({ navigation }: Props) {
     return (
         <View style={styles.container}>
             <OfflineBanner />
-            <FlatList
-                data={filteredConversations}
-                keyExtractor={(item) => item.id}
-                renderItem={renderConversation}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                ListEmptyComponent={
-                    !isOnline ? (
-                        <View style={styles.offlineEmpty}>
-                            <Text style={styles.offlineEmptyText}>
-                                You're offline. Connect to load your conversations.
-                            </Text>
-                        </View>
-                    ) : (
-                        <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyTitle}>No conversations yet</Text>
-                            <Text style={styles.emptySubtitle}>Add contacts to start chatting</Text>
-                        </View>
-                    )
-                }
-            />
+            {isSearching ? (
+                <>
+                    <SearchBar
+                        onSearch={handleSearch}
+                        onClose={() => {
+                            setIsSearching(false);
+                            setSearchQuery('');
+                            setSearchResults([]);
+                        }}
+                    />
+                    <SearchResults
+                        results={searchResults}
+                        query={searchQuery}
+                        onSelect={handleSearchResultSelect}
+                    />
+                </>
+            ) : (
+                <>
+                    <TouchableOpacity
+                        style={styles.searchRow}
+                        onPress={() => setIsSearching(true)}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons
+                            name="search"
+                            size={16}
+                            color={colors.gray400}
+                            style={{ marginRight: 8 }}
+                        />
+                        <Text style={[styles.searchPlaceholder, { color: colors.gray400 }]}>
+                            Search messages...
+                        </Text>
+                    </TouchableOpacity>
+                    <FlatList
+                        data={filteredConversations}
+                        keyExtractor={(item) => item.id}
+                        renderItem={renderConversation}
+                        refreshControl={
+                            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                        }
+                        ListEmptyComponent={
+                            !isOnline ? (
+                                <View style={styles.offlineEmpty}>
+                                    <Text style={styles.offlineEmptyText}>
+                                        You're offline. Connect to load your conversations.
+                                    </Text>
+                                </View>
+                            ) : (
+                                <View style={styles.emptyContainer}>
+                                    <Text style={styles.emptyTitle}>No conversations yet</Text>
+                                    <Text style={styles.emptySubtitle}>
+                                        Add contacts to start chatting
+                                    </Text>
+                                </View>
+                            )
+                        }
+                    />
+                </>
+            )}
             <ConversationActionSheet
                 visible={!!actionSheetConv}
                 conversation={actionSheetConv}
@@ -306,6 +419,20 @@ function makeStyles(colors: ThemeColors) {
             marginTop: 4,
         },
         conversationPreview: { fontSize: 14, color: colors.gray400, flex: 1, marginRight: 8 },
+        draftPreview: { color: '#E74C3C', fontStyle: 'italic' },
+        searchRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            margin: 10,
+            marginBottom: 4,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 10,
+            backgroundColor: colors.gray100,
+        },
+        searchPlaceholder: {
+            fontSize: 14,
+        },
         unreadBadge: {
             backgroundColor: colors.primary,
             borderRadius: 10,

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
     View,
     Text,
@@ -12,255 +12,57 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { Avatar } from '../../shared/components/Avatar';
-import { useToast } from '../../shared/components/Toast';
-import { contactsApi, chatApi } from '../../shared/services/api';
-import { usePresenceStore } from '../../shared/stores/presence';
-import { useConversationsStore } from '../../shared/stores/conversations';
+import { SearchBar } from '../chat/components/SearchBar';
+import { SearchResults } from '../chat/components/SearchResults';
 import { useThemeColors } from '../../shared/hooks/useThemeColors';
 import type { ThemeColors } from '../../shared/utils/theme';
-import { getPresenceString } from '../../shared/utils/presence';
-import type { RootStackParamList, Contact } from '../../shared/types';
+import type { RootStackParamList } from '../../shared/types';
+import { useContactProfile } from './hooks/useContactProfile';
 
 interface Props {
     navigation: NativeStackNavigationProp<any>;
     route: RouteProp<RootStackParamList, 'ContactProfile'>;
 }
 
-export function ContactProfileScreen({ route, navigation }: any) {
-    const { contactId, otherUser, relationshipType: initialRelationshipType } = route.params;
-    const [contact, setContact] = useState<Contact | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [relationshipType, setRelationshipType] = useState<'friend' | 'lover'>(
-        initialRelationshipType || 'friend',
-    );
-    // Nickname modal state
-    const [nicknameModal, setNicknameModal] = useState<{
-        visible: boolean;
-        field: 'nickname' | 'myNickname';
-        value: string;
-    }>({ visible: false, field: 'nickname', value: '' });
-    const { showToast } = useToast();
-    const onlineUserIds = usePresenceStore((s) => s.onlineUserIds);
-    const lastSeenMap = usePresenceStore((s) => s.lastSeenMap);
+export function ContactProfileScreen({ route, navigation }: Props) {
     const colors = useThemeColors();
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
-    async function loadContact() {
-        try {
-            setLoading(true);
-            const { data } = await contactsApi.getContacts();
-            const found = data.find((c: Contact) => c.contactId === contactId);
-            if (found) {
-                setContact(found);
-                setRelationshipType(found.relationshipType);
-            }
-        } catch (err) {
-            console.error('Failed to load contact:', err);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    useFocusEffect(
-        useCallback(() => {
-            loadContact();
-        }, [contactId]),
-    );
-
-    const handleSaveNickname = async (newNickname: string | null) => {
-        if (!contact) return;
-        try {
-            setSaving(true);
-            await contactsApi.setNickname(contactId, newNickname || null);
-            setContact({
-                ...contact,
-                nickname: newNickname || null,
-            });
-            showToast('success', 'Nickname updated');
-        } catch (err: any) {
-            showToast('error', err.response?.data?.error || 'Failed to update nickname');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleSaveMyNickname = async (newMyNickname: string | null) => {
-        if (!contact) return;
-        try {
-            setSaving(true);
-            await contactsApi.setMyNickname(contactId, newMyNickname || null);
-            setContact({
-                ...contact,
-                myNickname: newMyNickname || null,
-            });
-            showToast('success', 'My nickname updated');
-        } catch (err: any) {
-            showToast('error', err.response?.data?.error || 'Failed to update my nickname');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleSetRelationshipType = async (type: 'friend' | 'lover') => {
-        try {
-            setSaving(true);
-            await contactsApi.setRelationshipType(contactId, type);
-            setRelationshipType(type);
-            showToast('success', `Relationship updated to ${type}`);
-        } catch (err: any) {
-            showToast('error', err.response?.data?.error || 'Failed to update relationship');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleOpenChat = async () => {
-        try {
-            // Get or create conversation with this contact
-            const { data: conv } = await chatApi.getOrCreateConversation(otherUser.id);
-
-            navigation.navigate('Chat', {
-                conversationId: conv.id,
-                otherUser,
-                relationshipType,
-                contactId,
-                nickname: contact?.nickname || undefined,
-            });
-        } catch (err: any) {
-            showToast('error', err.response?.data?.error || 'Failed to open chat');
-        }
-    };
-
-    const handleRemoveContact = () => {
-        Alert.alert('Remove contact', 'Are you sure?', [
-            { text: 'Cancel' },
-            {
-                text: 'Remove',
-                style: 'destructive',
-                onPress: async () => {
-                    try {
-                        setSaving(true);
-                        await contactsApi.removeContact(contactId);
-                        showToast('success', 'Contact removed');
-                        navigation.goBack();
-                    } catch (err: any) {
-                        showToast('error', err.response?.data?.error || 'Failed to remove contact');
-                    } finally {
-                        setSaving(false);
-                    }
-                },
-            },
-        ]);
-    };
-
-    const handleBlockContact = () => {
-        Alert.alert(
-            `Block ${otherUser.displayName}?`,
-            "They won't be able to message you or send contact requests.",
-            [
-                { text: 'Cancel' },
-                {
-                    text: 'Block',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setSaving(true);
-                            await contactsApi.blockContact(otherUser.id);
-                            showToast('success', 'Contact blocked');
-                            navigation.goBack();
-                        } catch (err: any) {
-                            showToast(
-                                'error',
-                                err.response?.data?.error || 'Failed to block contact',
-                            );
-                        } finally {
-                            setSaving(false);
-                        }
-                    },
-                },
-            ],
-        );
-    };
-
-    const handleDeleteConversationForMe = () => {
-        if (!route.params.conversationId) {
-            showToast('error', 'Conversation not found');
-            return;
-        }
-
-        Alert.alert(
-            'Delete conversation for me',
-            "This clears your message history only. They won't be affected.",
-            [
-                { text: 'Cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setSaving(true);
-                            await chatApi.deleteConversation(route.params.conversationId!, 'me');
-                            useConversationsStore
-                                .getState()
-                                .addHiddenConversation(route.params.conversationId!);
-                            showToast('success', 'Conversation deleted');
-                        } catch (err: any) {
-                            showToast(
-                                'error',
-                                err.response?.data?.error || 'Failed to delete conversation',
-                            );
-                        } finally {
-                            setSaving(false);
-                        }
-                    },
-                },
-            ],
-        );
-    };
-
-    const handleDeleteConversationForEveryone = () => {
-        if (!route.params.conversationId) {
-            showToast('error', 'Conversation not found');
-            return;
-        }
-
-        Alert.alert(
-            'Delete conversation for everyone',
-            'This permanently deletes the conversation for both you and them. This cannot be undone.',
-            [
-                { text: 'Cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setSaving(true);
-                            await chatApi.deleteConversation(
-                                route.params.conversationId!,
-                                'everyone',
-                            );
-                            useConversationsStore
-                                .getState()
-                                .addHiddenConversation(route.params.conversationId!);
-                            showToast('success', 'Conversation deleted for everyone');
-                        } catch (err: any) {
-                            showToast(
-                                'error',
-                                err.response?.data?.error || 'Failed to delete conversation',
-                            );
-                        } finally {
-                            setSaving(false);
-                        }
-                    },
-                },
-            ],
-        );
-    };
+    const {
+        contact,
+        loading,
+        saving,
+        relationshipType,
+        nicknameModal,
+        setNicknameModal,
+        chatSearchVisible,
+        setChatSearchVisible,
+        setChatSearchQuery,
+        chatSearchQuery,
+        chatSearchResults,
+        searchingChat,
+        profileUser,
+        isOnline,
+        presenceText,
+        displayName,
+        relationshipEmoji,
+        handleSetRelationshipType,
+        handleOpenChat,
+        handleOpenMediaGallery,
+        handleOpenChatSearch,
+        handleSearchInChat,
+        handleChatSearchSelect,
+        handleRemoveContact,
+        handleBlockContact,
+        handleDeleteConversationForMe,
+        handleDeleteConversationForEveryone,
+        handleSaveNickname,
+        handleSaveMyNickname,
+    } = useContactProfile({ route, navigation });
 
     if (loading) {
         return (
@@ -278,222 +80,250 @@ export function ContactProfileScreen({ route, navigation }: any) {
         );
     }
 
-    const profileUser = contact?.user ?? otherUser;
-    const isOnline = onlineUserIds.has(profileUser.id);
-    const lastSeenAt = lastSeenMap[profileUser.id] ?? profileUser.lastSeenAt;
-    const presenceText = getPresenceString(isOnline, lastSeenAt);
-    // nickname = what current user calls this contact; myNickname = current user's alias for themselves
-    const displayName = contact.nickname || profileUser.displayName;
-    const relationshipEmoji = relationshipType === 'friend' ? '💙' : '❤️';
-
     return (
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-            {/* Header Section */}
-            <View style={styles.headerSection}>
-                <Avatar
-                    uri={profileUser.avatarUrl}
-                    name={displayName}
-                    color={profileUser.avatarColor}
-                    size={80}
-                    isOnline={isOnline}
-                />
-                <Text style={styles.displayName}>{displayName}</Text>
-                <Text style={styles.username}>@{profileUser.username}</Text>
-                <View style={styles.presenceRow}>
-                    <View
-                        style={[
-                            styles.onlineDot,
-                            { backgroundColor: isOnline ? colors.primary : colors.gray400 },
-                        ]}
+        <>
+            <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+                <View style={styles.headerSection}>
+                    <Avatar
+                        uri={profileUser.avatarUrl}
+                        name={displayName}
+                        color={profileUser.avatarColor}
+                        size={80}
+                        isOnline={isOnline}
                     />
-                    <Text style={styles.presenceText}>{presenceText}</Text>
+                    <Text style={styles.displayName}>{displayName}</Text>
+                    <Text style={styles.username}>@{profileUser.username}</Text>
+                    <View style={styles.presenceRow}>
+                        <View
+                            style={[
+                                styles.onlineDot,
+                                { backgroundColor: isOnline ? colors.primary : colors.gray400 },
+                            ]}
+                        />
+                        <Text style={styles.presenceText}>{presenceText}</Text>
+                    </View>
+
+                    <TouchableOpacity
+                        style={[styles.relationshipBadge, { backgroundColor: colors.bgSecondary }]}
+                        onPress={() => {
+                            Alert.alert('Relationship Type', '', [
+                                {
+                                    text: ' Friend',
+                                    onPress: () => handleSetRelationshipType('friend'),
+                                },
+                                {
+                                    text: ' Lover',
+                                    onPress: () => handleSetRelationshipType('lover'),
+                                },
+                                { text: 'Cancel' },
+                            ]);
+                        }}
+                        disabled={saving}
+                    >
+                        <Text style={styles.relationshipText}>
+                            {relationshipEmoji}{' '}
+                            {relationshipType.charAt(0).toUpperCase() + relationshipType.slice(1)}
+                        </Text>
+                    </TouchableOpacity>
                 </View>
 
-                {/* Relationship Badge */}
-                <TouchableOpacity
-                    style={[styles.relationshipBadge, { backgroundColor: colors.bgSecondary }]}
-                    onPress={() => {
-                        Alert.alert('Relationship Type', '', [
-                            {
-                                text: '💙 Friend',
-                                onPress: () => handleSetRelationshipType('friend'),
-                            },
-                            {
-                                text: '❤️ Lover',
-                                onPress: () => handleSetRelationshipType('lover'),
-                            },
-                            { text: 'Cancel' },
-                        ]);
-                    }}
-                    disabled={saving}
-                >
-                    <Text style={styles.relationshipText}>
-                        {relationshipEmoji}{' '}
-                        {relationshipType.charAt(0).toUpperCase() + relationshipType.slice(1)}
-                    </Text>
-                </TouchableOpacity>
-            </View>
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Nicknames</Text>
+                    <TouchableOpacity
+                        style={styles.row}
+                        onPress={() =>
+                            setNicknameModal({
+                                visible: true,
+                                field: 'nickname',
+                                value: contact.nickname || '',
+                            })
+                        }
+                        disabled={saving}
+                    >
+                        <View style={styles.rowContent}>
+                            <Text style={styles.rowLabel}>Contact's nickname</Text>
+                            <Text style={styles.rowValue}>{contact.nickname || 'Add nickname'}</Text>
+                        </View>
+                    </TouchableOpacity>
 
-            {/* Nicknames Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Nicknames</Text>
+                    <TouchableOpacity
+                        style={styles.row}
+                        onPress={() =>
+                            setNicknameModal({
+                                visible: true,
+                                field: 'myNickname',
+                                value: contact.myNickname || '',
+                            })
+                        }
+                        disabled={saving}
+                    >
+                        <View style={styles.rowContent}>
+                            <Text style={styles.rowLabel}>My nickname</Text>
+                            <Text style={styles.rowValue}>{contact.myNickname || 'Add nickname'}</Text>
+                        </View>
+                    </TouchableOpacity>
+                </View>
 
-                <TouchableOpacity
-                    style={styles.row}
-                    onPress={() =>
-                        setNicknameModal({
-                            visible: true,
-                            field: 'nickname',
-                            value: contact.nickname || '',
-                        })
-                    }
-                    disabled={saving}
-                >
-                    <View style={styles.rowContent}>
-                        <Text style={styles.rowLabel}>Contact's nickname</Text>
-                        <Text style={styles.rowValue}>{contact.nickname || 'Add nickname'}</Text>
-                    </View>
-                </TouchableOpacity>
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Quick actions</Text>
 
-                <TouchableOpacity
-                    style={styles.row}
-                    onPress={() =>
-                        setNicknameModal({
-                            visible: true,
-                            field: 'myNickname',
-                            value: contact.myNickname || '',
-                        })
-                    }
-                    disabled={saving}
-                >
-                    <View style={styles.rowContent}>
-                        <Text style={styles.rowLabel}>My nickname</Text>
-                        <Text style={styles.rowValue}>{contact.myNickname || 'Add nickname'}</Text>
-                    </View>
-                </TouchableOpacity>
-            </View>
+                    <TouchableOpacity
+                        style={[styles.primaryAction, { backgroundColor: colors.primary }]}
+                        onPress={handleOpenChat}
+                        disabled={saving}
+                    >
+                        <Ionicons name="chatbubble-ellipses-outline" size={18} color="#FFFFFF" />
+                        <Text style={styles.primaryActionText}>Open chat</Text>
+                    </TouchableOpacity>
 
-            {/* Actions Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Actions</Text>
-
-                <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: colors.primary }]}
-                    onPress={handleOpenChat}
-                    disabled={saving}
-                >
-                    <Text style={styles.actionButtonText}>Open Chat</Text>
-                </TouchableOpacity>
-
-                {route.params.conversationId && (
-                    <>
+                    <View style={styles.quickGrid}>
                         <TouchableOpacity
-                            style={[styles.actionButton, { backgroundColor: colors.gray200 }]}
+                            style={[styles.quickCard, { backgroundColor: colors.bgSecondary }]}
+                            onPress={handleOpenChatSearch}
+                            disabled={saving}
+                        >
+                            <Ionicons name="search-outline" size={18} color={colors.dark} />
+                            <Text style={[styles.quickCardText, { color: colors.dark }]}>Search in chat</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.quickCard, { backgroundColor: colors.bgSecondary }]}
+                            onPress={handleOpenMediaGallery}
+                            disabled={saving}
+                        >
+                            <Ionicons name="images-outline" size={18} color={colors.dark} />
+                            <Text style={[styles.quickCardText, { color: colors.dark }]}>Media gallery</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.quickCard, { backgroundColor: colors.bgSecondary }]}
                             onPress={handleDeleteConversationForMe}
                             disabled={saving}
                         >
-                            <Text style={[styles.actionButtonText, { color: colors.dark }]}>
-                                Delete conversation for me
-                            </Text>
+                            <Ionicons name="trash-outline" size={18} color={colors.dark} />
+                            <Text style={[styles.quickCardText, { color: colors.dark }]}>Delete for me</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            style={[styles.actionButton, { backgroundColor: colors.gray200 }]}
+                            style={[styles.quickCard, { backgroundColor: '#FEECEC' }]}
                             onPress={handleDeleteConversationForEveryone}
                             disabled={saving}
                         >
-                            <Text style={[styles.actionButtonText, { color: colors.dark }]}>
-                                Delete conversation for everyone
-                            </Text>
+                            <Ionicons name="warning-outline" size={18} color="#F44336" />
+                            <Text style={[styles.quickCardText, { color: '#F44336' }]}>Delete for everyone</Text>
                         </TouchableOpacity>
-                    </>
-                )}
-
-                <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: colors.gray200 }]}
-                    onPress={handleRemoveContact}
-                    disabled={saving}
-                >
-                    <Text style={[styles.actionButtonText, { color: colors.dark }]}>
-                        Remove contact
-                    </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: colors.red }]}
-                    onPress={handleBlockContact}
-                    disabled={saving}
-                >
-                    <Text style={styles.actionButtonText}>Block</Text>
-                </TouchableOpacity>
-            </View>
-            {/* Nickname edit modal — cross-platform replacement for Alert.prompt */}
-            <Modal
-                visible={nicknameModal.visible}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setNicknameModal((s) => ({ ...s, visible: false }))}
-            >
-                <KeyboardAvoidingView
-                    style={styles.modalOverlay}
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                >
-                    <View style={[styles.modalBox, { backgroundColor: colors.bg }]}>
-                        <Text style={[styles.modalTitle, { color: colors.dark }]}>
-                            {nicknameModal.field === 'nickname'
-                                ? 'Set nickname'
-                                : 'Set my nickname'}
-                        </Text>
-                        <Text style={[styles.modalSubtitle, { color: colors.gray500 }]}>
-                            {nicknameModal.field === 'nickname'
-                                ? 'What do you call them?'
-                                : 'What do you want them to call you?'}
-                        </Text>
-                        <TextInput
-                            style={[
-                                styles.modalInput,
-                                {
-                                    color: colors.dark,
-                                    borderColor: colors.border,
-                                    backgroundColor: colors.bgSecondary,
-                                },
-                            ]}
-                            value={nicknameModal.value}
-                            onChangeText={(text) =>
-                                setNicknameModal((s) => ({ ...s, value: text }))
-                            }
-                            autoFocus
-                            placeholder="Enter nickname..."
-                            placeholderTextColor={colors.gray400}
-                        />
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity
-                                style={styles.modalCancel}
-                                onPress={() => setNicknameModal((s) => ({ ...s, visible: false }))}
-                            >
-                                <Text style={[styles.modalCancelText, { color: colors.gray500 }]}>
-                                    Cancel
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.modalSave, { backgroundColor: colors.primary }]}
-                                onPress={() => {
-                                    const val = nicknameModal.value.trim() || null;
-                                    setNicknameModal((s) => ({ ...s, visible: false }));
-                                    if (nicknameModal.field === 'nickname') {
-                                        handleSaveNickname(val);
-                                    } else {
-                                        handleSaveMyNickname(val);
-                                    }
-                                }}
-                            >
-                                <Text style={styles.modalSaveText}>Save</Text>
-                            </TouchableOpacity>
-                        </View>
                     </View>
-                </KeyboardAvoidingView>
+
+                    <TouchableOpacity
+                        style={[styles.secondaryAction, { borderColor: colors.border }]}
+                        onPress={handleRemoveContact}
+                        disabled={saving}
+                    >
+                        <Text style={[styles.secondaryActionText, { color: colors.dark }]}>Remove contact</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.secondaryAction, styles.dangerOutline]}
+                        onPress={handleBlockContact}
+                        disabled={saving}
+                    >
+                        <Text style={[styles.secondaryActionText, { color: '#F44336' }]}>Block user</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <Modal
+                    visible={nicknameModal.visible}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setNicknameModal((s) => ({ ...s, visible: false }))}
+                >
+                    <KeyboardAvoidingView
+                        style={styles.modalOverlay}
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    >
+                        <View style={[styles.modalBox, { backgroundColor: colors.bg }]}>
+                            <Text style={[styles.modalTitle, { color: colors.dark }]}>
+                                {nicknameModal.field === 'nickname'
+                                    ? 'Set nickname'
+                                    : 'Set my nickname'}
+                            </Text>
+                            <Text style={[styles.modalSubtitle, { color: colors.gray500 }]}>
+                                {nicknameModal.field === 'nickname'
+                                    ? 'What do you call them?'
+                                    : 'What do you want them to call you?'}
+                            </Text>
+                            <TextInput
+                                style={[
+                                    styles.modalInput,
+                                    {
+                                        color: colors.dark,
+                                        borderColor: colors.border,
+                                        backgroundColor: colors.bgSecondary,
+                                    },
+                                ]}
+                                value={nicknameModal.value}
+                                onChangeText={(text) =>
+                                    setNicknameModal((s) => ({ ...s, value: text }))
+                                }
+                                autoFocus
+                                placeholder="Enter nickname..."
+                                placeholderTextColor={colors.gray400}
+                            />
+                            <View style={styles.modalActions}>
+                                <TouchableOpacity
+                                    style={styles.modalCancel}
+                                    onPress={() =>
+                                        setNicknameModal((s) => ({ ...s, visible: false }))
+                                    }
+                                >
+                                    <Text style={[styles.modalCancelText, { color: colors.gray500 }]}>
+                                        Cancel
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.modalSave, { backgroundColor: colors.primary }]}
+                                    onPress={() => {
+                                        const val = nicknameModal.value.trim() || null;
+                                        setNicknameModal((s) => ({ ...s, visible: false }));
+                                        if (nicknameModal.field === 'nickname') {
+                                            handleSaveNickname(val);
+                                        } else {
+                                            handleSaveMyNickname(val);
+                                        }
+                                    }}
+                                >
+                                    <Text style={styles.modalSaveText}>Save</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </KeyboardAvoidingView>
+                </Modal>
+            </ScrollView>
+
+            <Modal
+                visible={chatSearchVisible}
+                animationType="slide"
+                onRequestClose={() => setChatSearchVisible(false)}
+            >
+                <View style={[styles.searchModalContainer, { backgroundColor: colors.bg }]}>
+                    <SearchBar
+                        onSearch={handleSearchInChat}
+                        onClose={() => {
+                            setChatSearchVisible(false);
+                            setChatSearchQuery('');
+                        }}
+                    />
+                    <SearchResults
+                        results={chatSearchResults}
+                        query={chatSearchQuery}
+                        onSelect={handleChatSearchSelect}
+                    />
+                    {searchingChat && (
+                        <ActivityIndicator style={styles.searchLoader} color={colors.primary} />
+                    )}
+                </View>
             </Modal>
-        </ScrollView>
+        </>
     );
 }
 
@@ -582,17 +412,60 @@ function makeStyles(colors: ThemeColors) {
             fontSize: 14,
             color: colors.primary,
         },
-        actionButton: {
+        primaryAction: {
+            paddingVertical: 14,
+            borderRadius: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+            gap: 8,
+            marginBottom: 12,
+        },
+        primaryActionText: {
+            fontSize: 16,
+            fontWeight: '700',
+            color: '#FFFFFF',
+        },
+        quickGrid: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+            gap: 8,
+            marginBottom: 12,
+        },
+        quickCard: {
+            width: '48.5%',
+            borderRadius: 12,
             paddingVertical: 12,
-            paddingHorizontal: 16,
-            borderRadius: 8,
+            paddingHorizontal: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+        },
+        quickCardText: {
+            fontSize: 13,
+            fontWeight: '600',
+            textAlign: 'center',
+        },
+        secondaryAction: {
+            paddingVertical: 12,
+            borderRadius: 10,
+            borderWidth: 1,
             alignItems: 'center',
             marginBottom: 8,
         },
-        actionButtonText: {
-            fontSize: 16,
+        secondaryActionText: {
+            fontSize: 14,
             fontWeight: '600',
-            color: '#FFFFFF',
+        },
+        dangerOutline: {
+            borderColor: '#F44336',
+        },
+        searchModalContainer: {
+            flex: 1,
+        },
+        searchLoader: {
+            marginVertical: 12,
         },
         modalOverlay: {
             flex: 1,
