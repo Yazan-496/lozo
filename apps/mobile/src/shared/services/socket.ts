@@ -47,6 +47,11 @@ export function connectSocket() {
         usePresenceStore.getState().setOffline(userId, lastSeenAt);
     });
 
+    // Receive the list of users who were already online before this client connected
+    socket.on('presence:sync', ({ userIds }: { userIds: string[] }) => {
+        usePresenceStore.getState().seedOnline(userIds);
+    });
+
     // Acknowledge delivery for every incoming message regardless of which screen is active
     socket.on(
         'message:new',

@@ -66,7 +66,9 @@ import { ImageViewerModal } from './components/ImageViewerModal';
 import { VoiceMessageBubble } from './components/VoiceMessageBubble';
 import { FileBubble } from './components/FileBubble';
 import { TypingIndicator } from './components/TypingIndicator';
-import type { Message, User, Reaction } from '../../shared/types';
+import { LinkPreviewCard } from './components/LinkPreviewCard';
+import { getCachedPreview, savePreview } from '../../shared/db/link-previews.db.ts';
+import type { Message, User, Reaction, LinkPreview } from '../../shared/types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 
@@ -80,6 +82,9 @@ interface GroupedReaction {
     count: number;
     mine: boolean;
 }
+
+const URL_REGEX =
+    /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&/=]*)/;
 
 function formatMessageTime(dateStr: string): string {
     return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -159,6 +164,14 @@ export function ChatScreen({ navigation, route }: Props) {
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [hasMoreOlder, setHasMoreOlder] = useState(true);
 
+    // Link preview state
+    const [inputLinkPreview, setInputLinkPreview] = useState<LinkPreview | null>(null);
+    const [previewDismissed, setPreviewDismissed] = useState(false);
+    const [previewCache, setPreviewCache] = useState<Record<string, LinkPreview | null>>({});
+    const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const fetchingUrlsRef = useRef<Set<string>>(new Set());
+    const lastDetectedUrlRef = useRef<string | null>(null);
+
     const flatListRef = useRef<FlatList>(null);
     const inputRef = useRef<TextInput>(null);
     const currentUser = useAuthStore((s) => s.user);
@@ -228,7 +241,7 @@ export function ChatScreen({ navigation, route }: Props) {
                         name={headerDisplayName}
                         color={chatUser.avatarColor}
                         size={36}
-                        isOnline={chatUser.isOnline}
+                        isOnline={isOtherOnline}
                     />
                     <View style={styles.headerInfo}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -255,6 +268,38 @@ export function ChatScreen({ navigation, route }: Props) {
             setPlayingMessageId(null);
         }
     }, [playerStatus.didJustFinish]);
+
+    async function fetchLinkPreview(url: string): Promise<LinkPreview | null> {
+        const cached = await getCachedPreview(url);
+        if (cached) return cached;
+        try {
+            const { data } = await api.get<LinkPreview>(
+                `/link-preview?url=${encodeURIComponent(url)}`,
+            );
+            if (data.title || data.description || data.image) {
+                await savePreview(data);
+            }
+            return data;
+        } catch {
+            return null;
+        }
+    }
+
+    // Scan newly loaded messages for URLs and populate preview cache
+    useEffect(() => {
+        for (const msg of messages) {
+            if (msg.type !== 'text' || !msg.content) continue;
+            const match = msg.content.match(URL_REGEX);
+            if (!match) continue;
+            const url = match[0];
+            if (url in previewCache || fetchingUrlsRef.current.has(url)) continue;
+            fetchingUrlsRef.current.add(url);
+            fetchLinkPreview(url).then((preview) => {
+                fetchingUrlsRef.current.delete(url);
+                setPreviewCache((prev) => ({ ...prev, [url]: preview }));
+            });
+        }
+    }, [messages]);
 
     async function loadMessages() {
         // 1. Load from SQLite cache immediately
@@ -1021,6 +1066,9 @@ export function ChatScreen({ navigation, route }: Props) {
         setMessages((prev) => [tempMsg, ...prev]);
         setText('');
         setReplyingTo(null);
+        setInputLinkPreview(null);
+        setPreviewDismissed(false);
+        lastDetectedUrlRef.current = null;
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         setLocalStatusMap((prev) => ({ ...prev, [localId]: 'pending' }));
         startPendingTimers(localId);
@@ -1360,14 +1408,25 @@ export function ChatScreen({ navigation, route }: Props) {
                                 ]}
                             >
                                 {item.type === 'text' && (
-                                    <Text
-                                        style={[
-                                            styles.messageText,
-                                            isMe ? styles.textMe : styles.textOther,
-                                        ]}
-                                    >
-                                        {item.content}
-                                    </Text>
+                                    <>
+                                        <Text
+                                            style={[
+                                                styles.messageText,
+                                                isMe ? styles.textMe : styles.textOther,
+                                            ]}
+                                        >
+                                            {item.content}
+                                        </Text>
+                                        {(() => {
+                                            const match = item.content?.match(URL_REGEX);
+                                            if (!match) return null;
+                                            const preview = previewCache[match[0]];
+                                            if (!preview) return null;
+                                            return (
+                                                <LinkPreviewCard preview={preview} isOwn={isMe} />
+                                            );
+                                        })()}
+                                    </>
                                 )}
                                 {item.type === 'voice' && item.mediaUrl && (
                                     <VoiceMessageBubble
@@ -1586,6 +1645,14 @@ export function ChatScreen({ navigation, route }: Props) {
                     onCancel={() => setReplyingTo(null)}
                 />
             )}
+            {inputLinkPreview && !previewDismissed && (
+                <View style={{ paddingHorizontal: 8, paddingBottom: 4 }}>
+                    <LinkPreviewCard
+                        preview={inputLinkPreview}
+                        onDismiss={() => setPreviewDismissed(true)}
+                    />
+                </View>
+            )}
             <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
                 {isRecording ? (
                     <>
@@ -1624,6 +1691,23 @@ export function ChatScreen({ navigation, route }: Props) {
                             onChangeText={(t) => {
                                 setText(t);
                                 handleTyping();
+                                // URL detection for input preview
+                                if (previewDebounceRef.current)
+                                    clearTimeout(previewDebounceRef.current);
+                                const match = t.match(URL_REGEX);
+                                if (!match) {
+                                    setInputLinkPreview(null);
+                                    lastDetectedUrlRef.current = null;
+                                    return;
+                                }
+                                const url = match[0];
+                                if (url !== lastDetectedUrlRef.current) {
+                                    setPreviewDismissed(false);
+                                    lastDetectedUrlRef.current = url;
+                                }
+                                previewDebounceRef.current = setTimeout(() => {
+                                    fetchLinkPreview(url).then(setInputLinkPreview);
+                                }, 800);
                             }}
                             placeholder="Message..."
                             style={styles.textInput}

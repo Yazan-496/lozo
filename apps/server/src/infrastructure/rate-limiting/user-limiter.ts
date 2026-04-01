@@ -8,7 +8,7 @@ export const userRateLimiter = rateLimit({
   max: Number(process.env.RATE_LIMIT_MAX_USER) || 100,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => (req as any).user?.id ?? ipKeyGenerator(req),
+  keyGenerator: (req) => (req as any).user?.id ?? ipKeyGenerator(req.ip ?? ''),
   skip: (req) => !(req as any).user,
   handler: (req, res) => {
     res.status(429).json(formatError(new RateLimitError('Too many requests'), req.id));
