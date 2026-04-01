@@ -445,19 +445,48 @@ export function ChatScreen({ navigation, route }: Props) {
             setLoadingOlder(true);
             const rows = await getDbMessages(conversationId, 50, oldest);
             const mapped = rows.map(localRowToMessage);
-            if (mapped.length === 0) {
+
+            if (mapped.length > 0) {
+                // SQLite hit — deduplicate and append
+                const existingIds = new Set(messages.map((m) => m.id));
+                const newOnes = mapped.filter((m) => !existingIds.has(m.id));
+                if (newOnes.length > 0) {
+                    setMessages((prev) => [...prev, ...newOnes]);
+                } else {
+                    setHasMoreOlder(false);
+                }
+                return;
+            }
+
+            // SQLite miss — if offline, silently stop and keep hasMoreOlder = true so
+            // the user can retry when they come back online
+            if (!isOnline) return;
+
+            // Online: fetch older messages from server using oldest message ID as cursor
+            const { data } = await api.get<Message[]>(
+                `/chat/conversations/${conversationId}/messages?cursor=${encodeURIComponent(messages[messages.length - 1].id)}&limit=50`,
+            );
+
+            if (data.length === 0) {
                 setHasMoreOlder(false);
                 return;
             }
-            // Filter out duplicates
+
+            // Persist to SQLite for future offline access
+            for (const msg of data) {
+                void upsertServerMessage(msg, currentUser?.id);
+            }
+
+            // Deduplicate against current state (cursor boundary may overlap)
             const existingIds = new Set(messages.map((m) => m.id));
-            const newOnes = mapped.filter((m) => !existingIds.has(m.id));
-            if (newOnes.length > 0) {
-                setMessages((prev) => [...prev, ...newOnes]);
+            const newFromServer = data.filter((m) => !existingIds.has(m.id));
+            if (newFromServer.length > 0) {
+                setMessages((prev) => [...prev, ...newFromServer]);
             } else {
                 setHasMoreOlder(false);
             }
         } catch (err) {
+            // T007: network errors must not permanently block further load attempts
             console.error('Failed to load older messages:', err);
         } finally {
             setLoadingOlder(false);

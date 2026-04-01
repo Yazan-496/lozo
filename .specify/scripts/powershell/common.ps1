@@ -68,7 +68,7 @@ function Get-CurrentBranch {
     }
 
     # For non-git repos, try to find the latest feature directory
-    $specsDir = Join-Path $repoRoot "specs"
+    $specsDir = Join-Path $repoRoot ".specify/features"
     
     if (Test-Path $specsDir) {
         $latestFeature = ""
@@ -83,7 +83,7 @@ function Get-CurrentBranch {
                     $latestTimestamp = $ts
                     $latestFeature = $_.Name
                 }
-            } elseif ($_.Name -match '^(\d{3})-') {
+            } elseif ($_.Name -match '^(\d{2,})-') {
                 $num = [int]$matches[1]
                 if ($num -gt $highest) {
                     $highest = $num
@@ -139,9 +139,9 @@ function Test-FeatureBranch {
         return $true
     }
     
-    if ($Branch -notmatch '^[0-9]{3}-' -and $Branch -notmatch '^\d{8}-\d{6}-') {
+    if ($Branch -notmatch '^[0-9]{2,}-' -and $Branch -notmatch '^\d{8}-\d{6}-') {
         Write-Output "ERROR: Not on a feature branch. Current branch: $Branch"
-        Write-Output "Feature branches should be named like: 001-feature-name or 20260319-143022-feature-name"
+        Write-Output "Feature branches should be named like: 13-feature-name or 20260319-143022-feature-name"
         return $false
     }
     return $true
@@ -149,7 +149,7 @@ function Test-FeatureBranch {
 
 function Get-FeatureDir {
     param([string]$RepoRoot, [string]$Branch)
-    Join-Path $RepoRoot "specs/$Branch"
+    Join-Path $RepoRoot ".specify/features/$Branch"
 }
 
 function Get-FeaturePathsEnv {
