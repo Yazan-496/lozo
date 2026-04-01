@@ -6,13 +6,14 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
+  Alert,
   StyleSheet,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Avatar } from '../../shared/components/Avatar';
 import { ContactSkeleton } from '../../shared/components/ContactSkeleton';
 import { useToast } from '../../shared/components/Toast';
-import { api } from '../../shared/services/api';
+import { api, contactsApi } from '../../shared/services/api';
 import { usePresenceStore } from '../../shared/stores/presence';
 import { useNotificationsStore } from '../../shared/stores/notifications';
 import { useThemeColors } from '../../shared/hooks/useThemeColors';
@@ -28,6 +29,7 @@ interface Props {
 export function ContactsScreen({ navigation }: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [pending, setPending] = useState<PendingRequest[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,12 +43,14 @@ export function ContactsScreen({ navigation }: Props) {
 
   async function loadData() {
     try {
-      const [contactsRes, pendingRes] = await Promise.all([
+      const [contactsRes, pendingRes, blockedRes] = await Promise.all([
         api.get<Contact[]>('/contacts'),
         api.get<PendingRequest[]>('/contacts/pending'),
+        contactsApi.getBlockedUsers().catch(() => ({ data: [] })),
       ]);
       setContacts(contactsRes.data);
       setPending(pendingRes.data);
+      setBlockedUsers((blockedRes as any).data ?? []);
       setPendingCount(pendingRes.data.length);
       if (isFirstLoad) setIsFirstLoad(false);
     } catch (err) {
@@ -109,6 +113,42 @@ export function ContactsScreen({ navigation }: Props) {
     }
   }
 
+  function handleUnblock(user: User) {
+    Alert.alert(
+      `Unblock ${user.displayName}?`,
+      'Unblocking will not restore the contact relationship.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unblock',
+          onPress: async () => {
+            try {
+              await contactsApi.unblockUser(user.id);
+              showToast('success', 'User unblocked');
+              loadData();
+            } catch {
+              showToast('error', 'Failed to unblock');
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  function handleSearchRowTap(user: User) {
+    // If already a contact, go to their profile
+    const existingContact = contacts.find((c) => c.user.id === user.id);
+    if (existingContact) {
+      navigation.navigate('ContactProfile', {
+        contactId: existingContact.contactId,
+        otherUser: user,
+        relationshipType: existingContact.relationshipType,
+      });
+      return;
+    }
+    navigation.navigate('UserProfile', { user });
+  }
+
   if (isFirstLoad && contacts.length === 0 && pending.length === 0) {
     return <ContactSkeleton />;
   }
@@ -132,14 +172,16 @@ export function ContactsScreen({ navigation }: Props) {
             <TouchableOpacity
               key={user.id}
               style={styles.userRow}
-              onPress={() => handleSendRequest(user.id)}
+              onPress={() => handleSearchRowTap(user)}
             >
               <Avatar uri={user.avatarUrl} name={user.displayName} color={user.avatarColor} size={44} />
               <View style={styles.userInfo}>
                 <Text style={styles.userName}>{user.displayName}</Text>
                 <Text style={styles.userHandle}>@{user.username}</Text>
               </View>
-              <Text style={styles.addText}>Add</Text>
+              <TouchableOpacity onPress={() => handleSendRequest(user.id)}>
+                <Text style={styles.addText}>Add</Text>
+              </TouchableOpacity>
             </TouchableOpacity>
           ))}
         </View>
@@ -215,6 +257,24 @@ export function ContactsScreen({ navigation }: Props) {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {blockedUsers.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Blocked ({blockedUsers.length})</Text>
+                {blockedUsers.map((user) => (
+                  <View key={user.id} style={styles.userRow}>
+                    <Avatar uri={user.avatarUrl} name={user.displayName} color={user.avatarColor} size={44} />
+                    <View style={styles.userInfo}>
+                      <Text style={styles.userName}>{user.displayName}</Text>
+                      <Text style={styles.userHandle}>@{user.username}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleUnblock(user)} style={styles.unblockButton}>
+                      <Text style={styles.unblockText}>Unblock</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
           </>
         }
       />
@@ -295,6 +355,17 @@ function makeStyles(colors: ThemeColors) {
       borderRadius: 20,
     },
     declineText: {
+      color: colors.gray500,
+      fontSize: 14,
+    },
+    unblockButton: {
+      borderWidth: 1,
+      borderColor: colors.gray300,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+    },
+    unblockText: {
       color: colors.gray500,
       fontSize: 14,
     },

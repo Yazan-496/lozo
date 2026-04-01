@@ -1,5 +1,6 @@
 import { useColorScheme, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,7 @@ import { ContactProfileScreen } from '../features/contacts/ContactProfileScreen'
 import { NotificationsScreen } from '../features/notifications/NotificationsScreen';
 import { ProfileScreen } from '../features/profile/ProfileScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
+import { UserProfileScreen } from '../features/contacts/UserProfileScreen';
 
 const AuthStack = createNativeStackNavigator();
 const MainStack = createNativeStackNavigator();
@@ -179,6 +181,17 @@ function MainNavigator() {
                     headerTintColor: colors.primary,
                 }}
             />
+            <MainStack.Screen
+                name="UserProfile"
+                component={UserProfileScreen}
+                options={{
+                    title: '',
+                    headerBackTitle: '',
+                    headerStyle: { backgroundColor: colors.bg },
+                    headerShadowVisible: false,
+                    headerTintColor: colors.primary,
+                }}
+            />
         </MainStack.Navigator>
     );
 }
@@ -219,7 +232,7 @@ export function RootNavigation() {
           };
 
     return (
-        <NavigationContainer theme={navTheme}>
+        <NavigationContainer ref={navigationRef} theme={navTheme}>
             {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
         </NavigationContainer>
     );

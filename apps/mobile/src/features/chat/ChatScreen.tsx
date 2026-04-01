@@ -34,8 +34,20 @@ import { OfflineBanner } from '../../shared/components/OfflineBanner';
 import { useToast } from '../../shared/components/Toast';
 import { api, BASE_URL } from '../../shared/services/api';
 import { getSocket } from '../../shared/services/socket';
-import { retry as outboxRetry, discard as outboxDiscard, setOnMessageSynced } from '../../shared/services/outbox';
-import { getMessages as getDbMessages, insertMessage, upsertServerMessage, deleteMessage, localRowToMessage, updateMessageStatus, type LocalMessageRow } from '../../shared/db/messages.db.ts';
+import {
+    retry as outboxRetry,
+    discard as outboxDiscard,
+    setOnMessageSynced,
+} from '../../shared/services/outbox';
+import {
+    getMessages as getDbMessages,
+    insertMessage,
+    upsertServerMessage,
+    deleteMessage,
+    localRowToMessage,
+    updateMessageStatus,
+    type LocalMessageRow,
+} from '../../shared/db/messages.db.ts';
 import { enqueueOutbox } from '../../shared/db/outbox.db.ts';
 import { useAuthStore } from '../../shared/stores/auth';
 import { usePresenceStore } from '../../shared/stores/presence';
@@ -87,15 +99,18 @@ function groupReactions(reactions: Reaction[], currentUserId: string): GroupedRe
 }
 
 export function ChatScreen({ navigation, route }: Props) {
-    const { conversationId, otherUser, user, relationshipType } = route.params as {
-        conversationId: string;
-        otherUser?: User;
-        user?: User;
-        relationshipType?: 'friend' | 'lover';
-    };
+    const { conversationId, otherUser, user, relationshipType, contactId, nickname } =
+        route.params as {
+            conversationId: string;
+            otherUser?: User;
+            user?: User;
+            relationshipType?: 'friend' | 'lover';
+            contactId?: string;
+            nickname?: string;
+        };
 
-    // Support both otherUser and user params for backwards compatibility
-    const chatUser = otherUser || user;
+    // Support both otherUser and user params; may be undefined when opened from a notification
+    const [chatUser, setChatUser] = useState<User | undefined>(otherUser || user);
     const insets = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
 
@@ -148,9 +163,11 @@ export function ChatScreen({ navigation, route }: Props) {
     const inputRef = useRef<TextInput>(null);
     const currentUser = useAuthStore((s) => s.user);
     const isOnline = useNetworkStore((s) => s.isOnline);
-    const isOtherOnline = usePresenceStore((s) => s.onlineUserIds.has(chatUser!.id));
-    const otherLastSeen = usePresenceStore(
-        (s) => s.lastSeenMap[chatUser!.id] ?? chatUser!.lastSeenAt,
+    const isOtherOnline = usePresenceStore((s) =>
+        chatUser ? s.onlineUserIds.has(chatUser.id) : false,
+    );
+    const otherLastSeen = usePresenceStore((s) =>
+        chatUser ? (s.lastSeenMap[chatUser.id] ?? chatUser.lastSeenAt) : null,
     );
     const colors = useThemeColors();
     const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -159,22 +176,63 @@ export function ChatScreen({ navigation, route }: Props) {
     const pendingTimers = useRef<Record<string, ReturnType<typeof setTimeout>[]>>({});
     const { showToast } = useToast();
 
+    // Nickname overrides the display name throughout this screen
+    const headerDisplayName = nickname || chatUser?.displayName || '';
+
+    // If opened from a notification (no otherUser in params), resolve it from the conversations list
+    useEffect(() => {
+        if (chatUser) return;
+        api.get<any[]>('/chat/conversations')
+            .then(({ data }) => {
+                const conv = data.find((c) => c.id === conversationId);
+                if (conv?.otherUser) setChatUser(conv.otherUser);
+            })
+            .catch(() => {});
+    }, [conversationId]);
+
     useEffect(() => {
         if (!chatUser) return;
         const relationshipEmoji = relationshipType === 'lover' ? '❤️' : '💙';
+
+        async function resolveContactId(): Promise<string | undefined> {
+            if (contactId) return contactId;
+            try {
+                const { data } = await (
+                    await import('../../shared/services/api')
+                ).contactsApi.getContacts();
+                const found = data.find((c: any) => c.user.id === chatUser!.id);
+                return found?.contactId;
+            } catch {
+                return undefined;
+            }
+        }
+
         navigation.setOptions({
             headerTitle: () => (
-                <View style={styles.headerRow}>
+                <TouchableOpacity
+                    style={styles.headerRow}
+                    activeOpacity={0.7}
+                    onPress={async () => {
+                        const resolvedContactId = await resolveContactId();
+                        if (!resolvedContactId) return;
+                        navigation.navigate('ContactProfile', {
+                            contactId: resolvedContactId,
+                            otherUser: chatUser!,
+                            conversationId,
+                            relationshipType,
+                        });
+                    }}
+                >
                     <Avatar
                         uri={chatUser.avatarUrl}
-                        name={chatUser.displayName}
+                        name={headerDisplayName}
                         color={chatUser.avatarColor}
                         size={36}
                         isOnline={chatUser.isOnline}
                     />
                     <View style={styles.headerInfo}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={styles.headerName}>{chatUser.displayName}</Text>
+                            <Text style={styles.headerName}>{headerDisplayName}</Text>
                             {relationshipType && (
                                 <Text style={{ marginLeft: 4, fontSize: 14 }}>
                                     {relationshipEmoji}
@@ -184,13 +242,13 @@ export function ChatScreen({ navigation, route }: Props) {
                         <Text style={styles.headerStatus}>
                             {isTyping
                                 ? 'typing...'
-                                : getPresenceString(isOtherOnline, otherLastSeen)}
+                                : getPresenceString(isOtherOnline, otherLastSeen || '')}
                         </Text>
                     </View>
-                </View>
+                </TouchableOpacity>
             ),
         });
-    }, [chatUser, isTyping, isOtherOnline, otherLastSeen, relationshipType]);
+    }, [chatUser, isTyping, isOtherOnline, otherLastSeen, relationshipType, nickname, contactId]);
 
     useEffect(() => {
         if (playerStatus.didJustFinish) {
@@ -220,7 +278,11 @@ export function ChatScreen({ navigation, route }: Props) {
                 `/chat/conversations/${conversationId}/messages`,
             );
             // Ensure server data is sorted newest-first to match local cache and inverted FlatList
-            setMessages(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+            setMessages(
+                data.sort(
+                    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+                ),
+            );
             // Persist server messages to SQLite
             for (const msg of data) {
                 void upsertServerMessage(msg, currentUser?.id);
@@ -256,10 +318,10 @@ export function ChatScreen({ navigation, route }: Props) {
         api.post(`/chat/conversations/${conversationId}/read`).catch(() => {});
 
         const socket = getSocket();
-        if (!socket) return;
+        if (!socket || !chatUser) return;
 
         // Notify sender that their messages are read on chat open
-        socket.emit('messages:read', { conversationId, senderId: chatUser!.id });
+        socket.emit('messages:read', { conversationId, senderId: chatUser.id });
 
         // Load older messages when user scrolls to top (inverted FlatList triggers onEndReached)
 
@@ -348,6 +410,12 @@ export function ChatScreen({ navigation, route }: Props) {
                 );
             }
         }
+        function onConversationDeleted(data: { conversationId: string }) {
+            if (data.conversationId === conversationId) {
+                navigation.goBack();
+            }
+        }
+
         socket.on('message:new', onNewMessage);
         socket.on('message:edited', onMessageEdited);
         socket.on('message:deleted', onMessageDeleted);
@@ -355,6 +423,7 @@ export function ChatScreen({ navigation, route }: Props) {
         socket.on('typing:start', onTypingStart);
         socket.on('typing:stop', onTypingStop);
         socket.on('messages:status', onMessageStatus);
+        socket.on('conversation:deleted', onConversationDeleted);
         return () => {
             socket.off('message:new', onNewMessage);
             socket.off('message:edited', onMessageEdited);
@@ -363,9 +432,10 @@ export function ChatScreen({ navigation, route }: Props) {
             socket.off('typing:start', onTypingStart);
             socket.off('typing:stop', onTypingStop);
             socket.off('messages:status', onMessageStatus);
+            socket.off('conversation:deleted', onConversationDeleted);
         };
-    }, [conversationId]);
-    
+    }, [conversationId, chatUser?.id]);
+
     async function loadOlderMessages() {
         if (loadingOlder || !hasMoreOlder) return;
         if (messages.length === 0) return;
@@ -723,6 +793,10 @@ export function ChatScreen({ navigation, route }: Props) {
 
     async function handleForward(convId: string) {
         if (!selectedMessage?.content) return;
+        if (convId === conversationId) {
+            Alert.alert('Cannot forward', 'You cannot forward a message to the same conversation.');
+            return;
+        }
         try {
             const socket = getSocket();
             socket?.emit(
@@ -819,7 +893,11 @@ export function ChatScreen({ navigation, route }: Props) {
             (response: any) => {
                 clearPendingTimers(tempId);
                 if (response?.success) {
-                    void updateSentMessage(tempId, response.message?.id, response.message?.createdAt);
+                    void updateSentMessage(
+                        tempId,
+                        response.message?.id,
+                        response.message?.createdAt,
+                    );
                     setLocalStatusMap((prev) => {
                         const n = { ...prev };
                         delete n[tempId];
@@ -1142,7 +1220,11 @@ export function ChatScreen({ navigation, route }: Props) {
                                     'This message could not be delivered.',
                                     [
                                         { text: 'Cancel', style: 'cancel' },
-                                        { text: 'Discard', style: 'destructive', onPress: () => handleDiscard(item) },
+                                        {
+                                            text: 'Discard',
+                                            style: 'destructive',
+                                            onPress: () => handleDiscard(item),
+                                        },
                                         { text: 'Retry', onPress: () => retrySend(item) },
                                     ],
                                 );
@@ -1387,12 +1469,23 @@ export function ChatScreen({ navigation, route }: Props) {
 
     const canSend = text.trim().length > 0;
 
+    if (!chatUser) return <MessageSkeleton />;
+
     if (isFirstLoad && messages.length === 0) {
         if (isOnline) return <MessageSkeleton />;
         return (
             <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
                 <OfflineBanner />
-                <Text style={[styles.metaText, { color: styles.deletedText.color, textAlign: 'center', paddingHorizontal: 32 }]}>
+                <Text
+                    style={[
+                        styles.metaText,
+                        {
+                            color: styles.deletedText.color,
+                            textAlign: 'center',
+                            paddingHorizontal: 32,
+                        },
+                    ]}
+                >
                     No messages loaded yet.{'\n'}Connect to load this conversation.
                 </Text>
             </View>
@@ -1423,7 +1516,13 @@ export function ChatScreen({ navigation, route }: Props) {
                     void loadOlderMessages();
                 }}
                 onEndReachedThreshold={0.2}
-                ListFooterComponent={loadingOlder ? <View style={{ padding: 8 }}><ActivityIndicator size="small" color={colors.primary} /></View> : null}
+                ListFooterComponent={
+                    loadingOlder ? (
+                        <View style={{ padding: 8 }}>
+                            <ActivityIndicator size="small" color={colors.primary} />
+                        </View>
+                    ) : null
+                }
             />
             {showScrollBtn && (
                 <TouchableOpacity
@@ -1664,6 +1763,7 @@ export function ChatScreen({ navigation, route }: Props) {
                 message={selectedMessage}
                 onClose={() => setShowForwardModal(false)}
                 onForward={handleForward}
+                excludeConversationId={conversationId}
             />
             <AttachmentSheet
                 visible={showAttachmentSheet}

@@ -18,6 +18,7 @@ interface ForwardModalProps {
   message: Message | null;
   onClose: () => void;
   onForward: (conversationId: string) => void;
+  excludeConversationId?: string;
 }
 
 export function ForwardModal({
@@ -25,6 +26,7 @@ export function ForwardModal({
   message,
   onClose,
   onForward,
+  excludeConversationId,
 }: ForwardModalProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -54,10 +56,12 @@ export function ForwardModal({
         : item.lastMessage.content || '[Message]'
       : 'No messages yet';
 
+    const isCurrent = item.id === excludeConversationId;
     return (
       <TouchableOpacity
-        style={styles.conversationRow}
-        onPress={() => onForward(item.id)}
+        style={[styles.conversationRow, isCurrent && { opacity: 0.4 }]}
+        onPress={() => !isCurrent && onForward(item.id)}
+        disabled={isCurrent}
       >
         <Avatar
           uri={item.otherUser.avatarUrl}
@@ -69,6 +73,7 @@ export function ForwardModal({
         <View style={styles.conversationInfo}>
           <Text style={styles.displayName} numberOfLines={1}>
             {item.otherUser.displayName}
+            {isCurrent ? ' (current)' : ''}
           </Text>
           <Text style={styles.lastMessage} numberOfLines={1}>
             {lastMessagePreview}

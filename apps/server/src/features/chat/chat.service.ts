@@ -1,4 +1,4 @@
-import { eq, and, or, desc, lt, ne, notInArray } from 'drizzle-orm';
+import { eq, and, or, desc, lt, ne, notInArray, inArray } from 'drizzle-orm';
 import { db } from '../../shared/db';
 import {
   users,
@@ -658,13 +658,22 @@ export async function deleteConversationForEveryone(conversationId: string, user
     throw new AppError(403, 'Not authorized to delete this conversation');
   }
 
-  // Mark all messages as deleted for everyone
-  const result = await db
-    .update(messages)
-    .set({ deletedForEveryone: true })
+  // Get all message IDs for FK-safe cascade
+  const msgIds = await db
+    .select({ id: messages.id })
+    .from(messages)
     .where(eq(messages.conversationId, conversationId));
 
-  // Return both participant IDs for socket emission
+  if (msgIds.length > 0) {
+    const ids = msgIds.map((m) => m.id);
+    await db.delete(messageReactions).where(inArray(messageReactions.messageId, ids));
+    await db.delete(messageStatuses).where(inArray(messageStatuses.messageId, ids));
+    await db.delete(messageDeletes).where(inArray(messageDeletes.messageId, ids));
+    await db.delete(messages).where(inArray(messages.id, ids));
+  }
+
+  await db.delete(conversations).where(eq(conversations.id, conversationId));
+
   return {
     success: true,
     participantIds: [conv.participantOneId, conv.participantTwoId],

@@ -44,3 +44,18 @@ export async function hideCachedConversation(id: string): Promise<void> {
   const db = getDb();
   await db.runAsync(`DELETE FROM conversations WHERE id = ?`, [id]);
 }
+
+// Replace the local cache with exactly the server's list — removes stale/deleted rows
+export async function syncConversations(convs: Conversation[]): Promise<void> {
+  const db = getDb();
+  if (convs.length === 0) {
+    await db.runAsync(`DELETE FROM conversations`);
+    return;
+  }
+  const placeholders = convs.map(() => '?').join(', ');
+  await db.runAsync(
+    `DELETE FROM conversations WHERE id NOT IN (${placeholders})`,
+    convs.map((c) => c.id),
+  );
+  await upsertConversations(convs);
+}

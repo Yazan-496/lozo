@@ -12,6 +12,7 @@ import { useNetworkStore } from './src/shared/stores/network';
 import { connectSocket, disconnectSocket } from './src/shared/services/socket';
 import { ErrorBoundary } from './src/shared/components/ErrorBoundary';
 import { ToastProvider } from './src/shared/components/Toast';
+import { InAppNotificationProvider } from './src/shared/components/InAppNotification';
 import { initDatabase, getDb } from './src/shared/db/sqlite';
 import { pruneOldMessages } from './src/shared/db/messages.db.ts';
 import { useNetworkState } from './src/shared/hooks/useNetworkState';
@@ -75,6 +76,7 @@ export default function App() {
         <ErrorBoundary>
             <SafeAreaProvider>
                 <ToastProvider>
+                    <InAppNotificationProvider>
                     <GestureHandlerRootView style={{ flex: 1 }}>
                         <StatusBar style={isDark ? 'light' : 'dark'} />
                         {splashMounted && (
@@ -85,6 +87,7 @@ export default function App() {
                         )}
                         <RootNavigation />
                     </GestureHandlerRootView>
+                    </InAppNotificationProvider>
                 </ToastProvider>
             </SafeAreaProvider>
         </ErrorBoundary>

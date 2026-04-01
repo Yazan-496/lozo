@@ -189,10 +189,12 @@ export async function getContacts(userId: string) {
         .where(eq(users.id, otherUserId))
         .limit(1);
 
+      // nickname col = what requester calls addressee; myNickname col = what addressee calls requester
+      const isRequester = row.requesterId === userId;
       return {
         contactId: row.id,
-        nickname: row.nickname,
-        myNickname: row.myNickname,
+        nickname: isRequester ? row.nickname : row.myNickname,
+        myNickname: isRequester ? row.myNickname : row.nickname,
         relationshipType: row.relationshipType,
         isMuted: row.isMuted,
         user: otherUser,
@@ -257,9 +259,11 @@ export async function setNickname(contactId: string, userId: string, nickname: s
     throw new AppError(400, 'Can only set nickname for accepted contacts');
   }
 
+  // Requester stores their nickname in `nickname` col; addressee stores theirs in `myNickname` col
+  const isRequester = contact.requesterId === userId;
   const [updated] = await db
     .update(contacts)
-    .set({ nickname, updatedAt: new Date() })
+    .set({ ...(isRequester ? { nickname } : { myNickname: nickname }), updatedAt: new Date() })
     .where(eq(contacts.id, contactId))
     .returning();
 
@@ -313,9 +317,11 @@ export async function setMyNickname(
     throw new AppError(400, 'Can only set my nickname for accepted contacts');
   }
 
+  // Requester's own alias is in `myNickname` col; addressee's own alias is in `nickname` col
+  const isRequester = contact.requesterId === userId;
   const [updated] = await db
     .update(contacts)
-    .set({ myNickname, updatedAt: new Date() })
+    .set({ ...(isRequester ? { myNickname } : { nickname: myNickname }), updatedAt: new Date() })
     .where(eq(contacts.id, contactId))
     .returning();
 
@@ -356,6 +362,56 @@ export async function setRelationshipType(
     .returning();
 
   return updated;
+}
+
+export async function getBlockedUsers(userId: string) {
+  const rows = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      displayName: users.displayName,
+      avatarUrl: users.avatarUrl,
+      avatarColor: users.avatarColor,
+      bio: users.bio,
+      isOnline: users.isOnline,
+      lastSeenAt: users.lastSeenAt,
+    })
+    .from(blockedUsers)
+    .innerJoin(users, eq(users.id, blockedUsers.blockedId))
+    .where(eq(blockedUsers.blockerId, userId));
+
+  return rows;
+}
+
+export async function getBlockStatus(currentUserId: string, otherUserId: string) {
+  const [iBlocked] = await db
+    .select({ id: blockedUsers.id })
+    .from(blockedUsers)
+    .where(and(eq(blockedUsers.blockerId, currentUserId), eq(blockedUsers.blockedId, otherUserId)))
+    .limit(1);
+
+  const [theyBlocked] = await db
+    .select({ id: blockedUsers.id })
+    .from(blockedUsers)
+    .where(and(eq(blockedUsers.blockerId, otherUserId), eq(blockedUsers.blockedId, currentUserId)))
+    .limit(1);
+
+  return {
+    iBlockedThem: !!iBlocked,
+    amBlockedByThem: !!theyBlocked,
+  };
+}
+
+export async function unblockUser(blockerId: string, blockedId: string) {
+  await db
+    .delete(blockedUsers)
+    .where(
+      and(
+        eq(blockedUsers.blockerId, blockerId),
+        eq(blockedUsers.blockedId, blockedId),
+      ),
+    );
+  return { success: true };
 }
 
 export async function removeContact(contactId: string, userId: string) {

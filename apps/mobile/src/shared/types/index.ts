@@ -94,6 +94,8 @@ export type RootStackParamList = {
     otherUser?: User;
     user?: User;
     relationshipType?: 'friend' | 'lover';
+    contactId?: string;
+    nickname?: string;
   };
   Settings: undefined;
   ContactProfile: {
@@ -101,5 +103,8 @@ export type RootStackParamList = {
     otherUser: User;
     conversationId?: string;
     relationshipType?: 'friend' | 'lover';
+  };
+  UserProfile: {
+    user: User;
   };
 };

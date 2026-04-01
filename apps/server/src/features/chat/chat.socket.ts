@@ -54,6 +54,19 @@ export function setupChatSocket(io: Server) {
       .set({ isOnline: true, lastSeenAt: new Date() })
       .where(eq(users.id, userId));
 
+    // Cache sender's public profile so we can include it in message:new
+    const [senderProfile] = await db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        avatarUrl: users.avatarUrl,
+        avatarColor: users.avatarColor,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    socket.data.profile = senderProfile;
+
     // Broadcast online status to all connected users
     socket.broadcast.emit('user:online', { userId });
 
@@ -79,6 +92,7 @@ export function setupChatSocket(io: Server) {
           io.to(recipientSocketId).emit('message:new', {
             message: result.message,
             conversationId: data.conversationId,
+            sender: socket.data.profile ?? null,
           });
         }
 
