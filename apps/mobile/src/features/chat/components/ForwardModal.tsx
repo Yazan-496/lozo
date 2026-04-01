@@ -41,7 +41,8 @@ export function ForwardModal({
     setLoading(true);
     try {
       const { data } = await api.get<Conversation[]>('/chat/conversations');
-      setConversations(data);
+      const unique = Array.from(new Map(data.map((c) => [c.id, c])).values());
+      setConversations(unique);
     } catch (err) {
       console.error('Failed to load conversations:', err);
     } finally {
@@ -104,7 +105,7 @@ export function ForwardModal({
         ) : (
           <FlatList
             data={conversations}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item, index) => `${item.id}:${index}`}
             renderItem={renderConversation}
             contentContainerStyle={styles.listContent}
           />

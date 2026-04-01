@@ -13,9 +13,9 @@
 
 **Purpose**: Install new dependency and extend SQLite schema for all 4 features
 
-- [ ] T001 Install `expo-image-manipulator` package in `apps/mobile/package.json` (run `npx expo install expo-image-manipulator`)
-- [ ] T002 Add `drafts` table to SQLite schema in `apps/mobile/src/shared/db/sqlite.ts` — `CREATE TABLE IF NOT EXISTS drafts (conversation_id TEXT PRIMARY KEY, text TEXT NOT NULL, updated_at INTEGER NOT NULL)`
-- [ ] T003 Add `messages_fts` FTS5 virtual table + INSERT/DELETE triggers to `apps/mobile/src/shared/db/sqlite.ts` — call `initFts()` inside `initDb()`
+- [X] T001 Install `expo-image-manipulator` package in `apps/mobile/package.json` (run `npx expo install expo-image-manipulator`)
+- [X] T002 Add `drafts` table to SQLite schema in `apps/mobile/src/shared/db/sqlite.ts` — `CREATE TABLE IF NOT EXISTS drafts (conversation_id TEXT PRIMARY KEY, text TEXT NOT NULL, updated_at INTEGER NOT NULL)`
+- [X] T003 Add `messages_fts` FTS5 virtual table + INSERT/DELETE triggers to `apps/mobile/src/shared/db/sqlite.ts` — call `initFts()` inside `initDb()`
 
 **Checkpoint**: Package installed, SQLite schema extended with `drafts` and `messages_fts` tables
 
@@ -25,10 +25,10 @@
 
 **Purpose**: DB access functions and types shared across features
 
-- [ ] T004 [P] Add draft DB functions (`saveDraft`, `getDraft`, `clearDraft`, `getAllDrafts`) to `apps/mobile/src/shared/db/conversations.db.ts`
-- [ ] T005 [P] Create `apps/mobile/src/shared/db/search.db.ts` — export `searchMessages(query: string): SearchResult[]` using FTS5 MATCH query with `snippet()` function
-- [ ] T006 [P] Create `apps/mobile/src/shared/db/media.db.ts` — export `getMediaByType(conversationId, type, limit, offset): MediaItem[]`
-- [ ] T007 [P] Add `SearchResult`, `MediaItem`, `Draft` TypeScript interfaces to `apps/mobile/src/shared/types/index.ts`
+- [X] T004 [P] Add draft DB functions (`saveDraft`, `getDraft`, `clearDraft`, `getAllDrafts`) to `apps/mobile/src/shared/db/conversations.db.ts`
+- [X] T005 [P] Create `apps/mobile/src/shared/db/search.db.ts` — export `searchMessages(query: string): SearchResult[]` using FTS5 MATCH query with `snippet()` function
+- [X] T006 [P] Create `apps/mobile/src/shared/db/media.db.ts` — export `getMediaByType(conversationId, type, limit, offset): MediaItem[]`
+- [X] T007 [P] Add `SearchResult`, `MediaItem`, `Draft` TypeScript interfaces to `apps/mobile/src/shared/types/index.ts`
 
 **Checkpoint**: All DB functions ready — features can now be implemented independently
 
@@ -42,9 +42,9 @@
 
 ### Implementation
 
-- [ ] T008 [US7] Add draft auto-save to `apps/mobile/src/features/chat/ChatScreen.tsx` — `useRef` debounce timer (500ms); call `saveDraft(conversationId, value)` on text change; call `clearDraft(conversationId)` on send; restore draft in `useEffect` on mount
-- [ ] T009 [US7] Add `useFocusEffect` draft loading to `apps/mobile/src/features/chat/ConversationsScreen.tsx` — call `getAllDrafts()` on focus; store in local state
-- [ ] T010 [US7] Update conversation list item render in `apps/mobile/src/features/chat/ConversationsScreen.tsx` — if `drafts[item.conversationId]` exists, show italic `"Draft: [preview]"` text in color `#E74C3C` instead of normal last message preview
+- [X] T008 [US7] Add draft auto-save to `apps/mobile/src/features/chat/ChatScreen.tsx` — `useRef` debounce timer (500ms); call `saveDraft(conversationId, value)` on text change; call `clearDraft(conversationId)` on send; restore draft in `useEffect` on mount
+- [X] T009 [US7] Add `useFocusEffect` draft loading to `apps/mobile/src/features/chat/ConversationsScreen.tsx` — call `getAllDrafts()` on focus; store in local state
+- [X] T010 [US7] Update conversation list item render in `apps/mobile/src/features/chat/ConversationsScreen.tsx` — if `drafts[item.conversationId]` exists, show italic `"Draft: [preview]"` text in color `#E74C3C` instead of normal last message preview
 
 **Checkpoint**: Drafts persist across navigation and app restarts; "Draft:" label shows in conversation list
 
@@ -58,9 +58,9 @@
 
 ### Implementation
 
-- [ ] T011 [US4] Add `isCompressing` state and compression logic to `apps/mobile/src/features/chat/ChatScreen.tsx` — inside `handleSendImage()`, before `uploadToSupabase()`: check file size via `FileSystem.getInfoAsync(uri)`, check if GIF via `mimeType`, call `manipulateAsync(uri, [{resize:{width:1920}}], {compress:0.8, format:SaveFormat.JPEG})`, compare sizes, fall back to original if compressed is larger or on error
-- [ ] T012 [US4] Add "Compressing..." UI indicator to send button / attachment preview area in `apps/mobile/src/features/chat/ChatScreen.tsx` — show when `isCompressing === true`, disable send button during compression
-- [ ] T013 [US4] Add compression failure toast in `apps/mobile/src/features/chat/ChatScreen.tsx` — on `manipulateAsync` catch: upload original + call existing toast utility with message "Couldn't compress, uploading original"
+- [X] T011 [US4] Add `isCompressing` state and compression logic to `apps/mobile/src/features/chat/ChatScreen.tsx` — inside `handleSendImage()`, before `uploadToSupabase()`: check file size via `FileSystem.getInfoAsync(uri)`, check if GIF via `mimeType`, call `manipulateAsync(uri, [{resize:{width:1920}}], {compress:0.8, format:SaveFormat.JPEG})`, compare sizes, fall back to original if compressed is larger or on error
+- [X] T012 [US4] Add "Compressing..." UI indicator to send button / attachment preview area in `apps/mobile/src/features/chat/ChatScreen.tsx` — show when `isCompressing === true`, disable send button during compression
+- [X] T013 [US4] Add compression failure toast in `apps/mobile/src/features/chat/ChatScreen.tsx` — on `manipulateAsync` catch: upload original + call existing toast utility with message "Couldn't compress, uploading original"
 
 **Checkpoint**: Large images compress before upload; GIFs and small images skip compression; UI shows progress; failure falls back gracefully
 
@@ -74,11 +74,11 @@
 
 ### Implementation
 
-- [ ] T014 [US5] Create `apps/mobile/src/features/chat/components/SearchBar.tsx` — animated component that expands from search icon; `TextInput` with 300ms debounce; clear/close button that collapses bar and restores conversation list
-- [ ] T015 [US5] Create `apps/mobile/src/features/chat/components/SearchResults.tsx` — `SectionList` grouped by `conversationId`; each item shows conversation name + highlighted snippet; uses bold/colored text for matched portions extracted from `highlight` field
-- [ ] T016 [US5] Add search icon + `SearchBar` to `ConversationsScreen` header in `apps/mobile/src/features/chat/ConversationsScreen.tsx` — toggle `isSearching` state; when `isSearching`, hide conversation list and show `SearchResults`; wire search query to `searchMessages()`
-- [ ] T017 [US5] Add `highlightMessageId` route param handling to `apps/mobile/src/features/chat/ChatScreen.tsx` — on mount, if `route.params.highlightMessageId` present, find message index in FlatList data and call `flatListRef.current?.scrollToIndex()`; apply 1.5s fade-out yellow highlight animation on the matched message bubble
-- [ ] T018 [US5] Register `MediaGallery` screen in navigation stack in `apps/mobile/src/navigation/index.tsx` and confirm `Chat` screen accepts `highlightMessageId` param in type definitions
+- [X] T014 [US5] Create `apps/mobile/src/features/chat/components/SearchBar.tsx` — animated component that expands from search icon; `TextInput` with 300ms debounce; clear/close button that collapses bar and restores conversation list
+- [X] T015 [US5] Create `apps/mobile/src/features/chat/components/SearchResults.tsx` — `SectionList` grouped by `conversationId`; each item shows conversation name + highlighted snippet; uses bold/colored text for matched portions extracted from `highlight` field
+- [X] T016 [US5] Add search icon + `SearchBar` to `ConversationsScreen` header in `apps/mobile/src/features/chat/ConversationsScreen.tsx` — toggle `isSearching` state; when `isSearching`, hide conversation list and show `SearchResults`; wire search query to `searchMessages()`
+- [X] T017 [US5] Add `highlightMessageId` route param handling to `apps/mobile/src/features/chat/ChatScreen.tsx` — on mount, if `route.params.highlightMessageId` present, find message index in FlatList data and call `flatListRef.current?.scrollToIndex()`; apply 1.5s fade-out yellow highlight animation on the matched message bubble
+- [X] T018 [US5] Register `MediaGallery` screen in navigation stack in `apps/mobile/src/navigation/index.tsx` and confirm `Chat` screen accepts `highlightMessageId` param in type definitions
 
 **Checkpoint**: Search finds messages offline, results are grouped/highlighted, tapping navigates to message
 
@@ -92,12 +92,12 @@
 
 ### Implementation
 
-- [ ] T019 [US6] Create `apps/mobile/src/features/chat/components/HeaderMenu.tsx` — dropdown menu component triggered by `...` button; accepts array of `{label, onPress}` items; renders as absolute-positioned card below header
-- [ ] T020 [US6] Add `HeaderMenu` to `ChatScreen` header in `apps/mobile/src/features/chat/ChatScreen.tsx` — add `...` button to header right; menu item "View Media" navigates to `MediaGallery` screen with `conversationId`
-- [ ] T021 [US6] Create `apps/mobile/src/features/chat/components/MediaGrid.tsx` — 3-column `FlatList` with date `SectionList` headers; renders `Image` thumbnails for photos; calls `onEndReached` to load next 50 items; empty state "No photos shared yet"
-- [ ] T022 [US6] Create `apps/mobile/src/features/chat/components/MediaFullscreenViewer.tsx` — `Modal` with horizontal `FlatList` (`pagingEnabled`); shows full-res image; swipe left/right to navigate; close button
-- [ ] T023 [US6] Create `apps/mobile/src/features/chat/MediaGalleryScreen.tsx` — 3-tab layout (Photos, Videos, Files); Photos/Videos use `MediaGrid`; Files tab uses `FlatList` list layout with icon, name, size, date; long-press triggers action sheet with Forward (opens existing `ForwardModal`), Download (`FileSystem.downloadAsync` + `MediaLibrary.saveToLibraryAsync`), Delete (calls delete message API); paginated loading via `getMediaByType()`
-- [ ] T024 [US6] Add `MediaGallery` to navigation stack in `apps/mobile/src/navigation/index.tsx` — `Stack.Screen name="MediaGallery" component={MediaGalleryScreen}` with header title "Media"
+- [X] T019 [US6] Create `apps/mobile/src/features/chat/components/HeaderMenu.tsx` — dropdown menu component triggered by `...` button; accepts array of `{label, onPress}` items; renders as absolute-positioned card below header
+- [X] T020 [US6] Add `HeaderMenu` to `ChatScreen` header in `apps/mobile/src/features/chat/ChatScreen.tsx` — add `...` button to header right; menu item "View Media" navigates to `MediaGallery` screen with `conversationId`
+- [X] T021 [US6] Create `apps/mobile/src/features/chat/components/MediaGrid.tsx` — 3-column `FlatList` with date `SectionList` headers; renders `Image` thumbnails for photos; calls `onEndReached` to load next 50 items; empty state "No photos shared yet"
+- [X] T022 [US6] Create `apps/mobile/src/features/chat/components/MediaFullscreenViewer.tsx` — `Modal` with horizontal `FlatList` (`pagingEnabled`); shows full-res image; swipe left/right to navigate; close button
+- [X] T023 [US6] Create `apps/mobile/src/features/chat/MediaGalleryScreen.tsx` — 3-tab layout (Photos, Videos, Files); Photos/Videos use `MediaGrid`; Files tab uses `FlatList` list layout with icon, name, size, date; long-press triggers action sheet with Forward (opens existing `ForwardModal`), Download (`FileSystem.downloadAsync` + `MediaLibrary.saveToLibraryAsync`), Delete (calls delete message API); paginated loading via `getMediaByType()`
+- [X] T024 [US6] Add `MediaGallery` to navigation stack in `apps/mobile/src/navigation/index.tsx` — `Stack.Screen name="MediaGallery" component={MediaGalleryScreen}` with header title "Media"
 
 **Checkpoint**: Media gallery accessible from ChatScreen; all 3 tabs work; fullscreen viewer navigable; download saves to device
 
@@ -107,11 +107,11 @@
 
 **Purpose**: Edge cases, empty states, and UX consistency across all 4 features
 
-- [ ] T025 [P] Verify FTS5 backfill — existing messages before T003 migration have no FTS entries; add one-time backfill query in `initFts()` in `apps/mobile/src/shared/db/sqlite.ts`: `INSERT INTO messages_fts SELECT id, conversation_id, content FROM messages WHERE content IS NOT NULL`
-- [ ] T026 [P] Add `maxLength={5000}` guard to draft save in `apps/mobile/src/features/chat/ChatScreen.tsx` — TextInput already has `maxLength: 5000`, confirm `saveDraft` also truncates to 5000 chars
-- [ ] T027 [P] Add "No results for '[term]'" empty state to `SearchResults.tsx` when results array is empty
-- [ ] T028 [P] Add offline guard for FTS search in `apps/mobile/src/shared/db/search.db.ts` — FTS5 is local-only so search always works; add try/catch and return empty array on DB error
-- [ ] T029 Verify EXIF orientation preserved in image compression — `expo-image-manipulator` preserves orientation by default when no `rotate` action is passed; add code comment in `ChatScreen.tsx` compression block
+- [X] T025 [P] Verify FTS5 backfill — existing messages before T003 migration have no FTS entries; add one-time backfill query in `initFts()` in `apps/mobile/src/shared/db/sqlite.ts`: `INSERT INTO messages_fts SELECT id, conversation_id, content FROM messages WHERE content IS NOT NULL`
+- [X] T026 [P] Add `maxLength={5000}` guard to draft save in `apps/mobile/src/features/chat/ChatScreen.tsx` — TextInput already has `maxLength: 5000`, confirm `saveDraft` also truncates to 5000 chars
+- [X] T027 [P] Add "No results for '[term]'" empty state to `SearchResults.tsx` when results array is empty
+- [X] T028 [P] Add offline guard for FTS search in `apps/mobile/src/shared/db/search.db.ts` — FTS5 is local-only so search always works; add try/catch and return empty array on DB error
+- [X] T029 Verify EXIF orientation preserved in image compression — `expo-image-manipulator` preserves orientation by default when no `rotate` action is passed; add code comment in `ChatScreen.tsx` compression block
 
 ---
 

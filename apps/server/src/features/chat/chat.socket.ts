@@ -4,14 +4,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../shared/db';
 import { users } from '../../shared/db/schema';
 import type { AuthPayload } from '../../shared/middleware/auth';
-import {
-  sendMessage,
-  editMessage,
-  deleteForEveryone,
-  reactToMessage,
-  markDelivered,
-  markRead,
-} from './chat.service';
+import { sendMessage, editMessage, deleteForEveryone } from './message.service';
+import { reactToMessage, markDelivered, markRead } from './reaction-status.service';
 
 // Map userId -> socketId for presence and direct messaging
 const onlineUsers = new Map<string, string>();

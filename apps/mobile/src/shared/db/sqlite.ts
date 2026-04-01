@@ -50,14 +50,66 @@ const MIGRATION = `
     image_url TEXT,
     fetched_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS drafts (
+    conversation_id TEXT PRIMARY KEY,
+    text TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
 `;
 
+/** Create FTS5 virtual table, triggers, and backfill existing messages (idempotent). */
+async function initFts(database: SQLite.SQLiteDatabase): Promise<void> {
+    await database.execAsync(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+      message_id UNINDEXED,
+      conversation_id UNINDEXED,
+      content,
+      tokenize = 'unicode61'
+    );
+    CREATE TRIGGER IF NOT EXISTS messages_fts_insert
+      AFTER INSERT ON messages
+      WHEN NEW.content IS NOT NULL
+      BEGIN
+        INSERT INTO messages_fts(message_id, conversation_id, content)
+        VALUES (NEW.local_id, NEW.conversation_id, NEW.content);
+      END;
+    CREATE TRIGGER IF NOT EXISTS messages_fts_delete
+      AFTER DELETE ON messages
+      BEGIN
+        DELETE FROM messages_fts WHERE message_id = OLD.local_id;
+      END;
+    CREATE TRIGGER IF NOT EXISTS messages_fts_update
+      AFTER UPDATE ON messages
+      WHEN NEW.content IS NOT NULL AND NEW.content != OLD.content
+      BEGIN
+        DELETE FROM messages_fts WHERE message_id = OLD.local_id;
+        INSERT INTO messages_fts(message_id, conversation_id, content)
+        VALUES (NEW.local_id, NEW.conversation_id, NEW.content);
+      END;
+  `);
+
+    // One-time backfill: populate FTS for messages inserted before this migration
+    const row = await database.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM messages_fts',
+    );
+    if ((row?.count ?? 0) === 0) {
+        await database.execAsync(`
+      INSERT INTO messages_fts(message_id, conversation_id, content)
+      SELECT local_id, conversation_id, content
+      FROM messages
+      WHERE content IS NOT NULL;
+    `);
+    }
+}
+
 export async function initDatabase(): Promise<void> {
-  db = await SQLite.openDatabaseAsync('lozo.db');
-  await db.execAsync(MIGRATION);
+    db = await SQLite.openDatabaseAsync('lozo.db');
+    await db.execAsync(MIGRATION);
+    await initFts(db);
+    console.log('[SQLite] Database initialized with FTS5');
 }
 
 export function getDb(): SQLite.SQLiteDatabase {
-  if (!db) throw new Error('SQLite not initialized — call initDatabase() first');
-  return db;
+    if (!db) throw new Error('SQLite not initialized — call initDatabase() first');
+    return db;
 }

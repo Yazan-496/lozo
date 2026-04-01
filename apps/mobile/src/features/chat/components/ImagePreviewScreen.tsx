@@ -7,9 +7,10 @@ interface Props {
     onSend: () => void;
     onCancel: () => void;
     isSending: boolean;
+    sendLabel?: string;
 }
 
-export function ImagePreviewScreen({ visible, uri, onSend, onCancel, isSending }: Props) {
+export function ImagePreviewScreen({ visible, uri, onSend, onCancel, isSending, sendLabel }: Props) {
     return (
         <Modal visible={visible} animationType="slide" transparent={false}>
             <View style={styles.container}>
@@ -30,7 +31,11 @@ export function ImagePreviewScreen({ visible, uri, onSend, onCancel, isSending }
                         disabled={isSending}
                     >
                         {isSending ? (
-                            <ActivityIndicator color={colors.white} size="small" />
+                            sendLabel ? (
+                                <Text style={styles.sendText}>{sendLabel}</Text>
+                            ) : (
+                                <ActivityIndicator color={colors.white} size="small" />
+                            )
                         ) : (
                             <Text style={styles.sendText}>Send</Text>
                         )}

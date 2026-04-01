@@ -17,47 +17,21 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@react-navigation/elements';
-import * as Clipboard from 'expo-clipboard';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
-import {
-    useAudioRecorder,
-    useAudioPlayer,
-    useAudioPlayerStatus,
-    AudioModule,
-    RecordingPresets,
-} from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '../../shared/components/Avatar';
 import { MessageSkeleton } from '../../shared/components/MessageSkeleton';
 import { OfflineBanner } from '../../shared/components/OfflineBanner';
-import { useToast } from '../../shared/components/Toast';
-import { api, BASE_URL } from '../../shared/services/api';
-import { getSocket } from '../../shared/services/socket';
-import {
-    retry as outboxRetry,
-    discard as outboxDiscard,
-    setOnMessageSynced,
-} from '../../shared/services/outbox';
-import {
-    getMessages as getDbMessages,
-    insertMessage,
-    upsertServerMessage,
-    deleteMessage,
-    localRowToMessage,
-    updateMessageStatus,
-    type LocalMessageRow,
-} from '../../shared/db/messages.db.ts';
-import { enqueueOutbox } from '../../shared/db/outbox.db.ts';
+import { api } from '../../shared/services/api';
 import { useAuthStore } from '../../shared/stores/auth';
 import { usePresenceStore } from '../../shared/stores/presence';
 import { useNetworkStore } from '../../shared/stores/network';
 import { useThemeColors } from '../../shared/hooks/useThemeColors';
 import type { ThemeColors } from '../../shared/utils/theme';
-import { formatDuration } from '../../shared/utils/media';
 import { getPresenceString } from '../../shared/utils/presence';
 import { MessageActionMenu } from './components/MessageActionMenu';
 import { ReplyPreviewBar } from './components/ReplyPreviewBar';
+import { SearchBar } from './components/SearchBar';
+import { SearchResults } from './components/SearchResults';
 import { ForwardModal } from './components/ForwardModal';
 import { EmojiPickerModal } from './components/EmojiPickerModal';
 import { AttachmentSheet } from './components/AttachmentSheet';
@@ -67,8 +41,10 @@ import { VoiceMessageBubble } from './components/VoiceMessageBubble';
 import { FileBubble } from './components/FileBubble';
 import { TypingIndicator } from './components/TypingIndicator';
 import { LinkPreviewCard } from './components/LinkPreviewCard';
-import { getCachedPreview, savePreview } from '../../shared/db/link-previews.db.ts';
-import type { Message, User, Reaction, LinkPreview } from '../../shared/types';
+import { HeaderMenu } from './components/HeaderMenu';
+import { useChatMessages } from './hooks/useChatMessages';
+import { useChatMedia } from './hooks/useChatMedia';
+import type { Message, User, Reaction } from '../../shared/types';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 
@@ -82,9 +58,6 @@ interface GroupedReaction {
     count: number;
     mine: boolean;
 }
-
-const URL_REGEX =
-    /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&/=]*)/;
 
 function formatMessageTime(dateStr: string): string {
     return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -104,76 +77,28 @@ function groupReactions(reactions: Reaction[], currentUserId: string): GroupedRe
 }
 
 export function ChatScreen({ navigation, route }: Props) {
-    const { conversationId, otherUser, user, relationshipType, contactId, nickname } =
-        route.params as {
-            conversationId: string;
-            otherUser?: User;
-            user?: User;
-            relationshipType?: 'friend' | 'lover';
-            contactId?: string;
-            nickname?: string;
-        };
+    const {
+        conversationId,
+        otherUser,
+        user,
+        relationshipType,
+        contactId,
+        nickname,
+        highlightMessageId: initialHighlightId,
+    } = route.params as {
+        conversationId: string;
+        otherUser?: User;
+        user?: User;
+        relationshipType?: 'friend' | 'lover';
+        contactId?: string;
+        nickname?: string;
+        highlightMessageId?: string;
+    };
 
-    // Support both otherUser and user params; may be undefined when opened from a notification
     const [chatUser, setChatUser] = useState<User | undefined>(otherUser || user);
     const insets = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
 
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [text, setText] = useState('');
-    const [isTyping, setIsTyping] = useState(false);
-    const [isFirstLoad, setIsFirstLoad] = useState(true);
-    const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
-    const [selectedMessageY, setSelectedMessageY] = useState(0);
-    const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-    const [editingMessage, setEditingMessage] = useState<Message | null>(null);
-    const [showForwardModal, setShowForwardModal] = useState(false);
-    const [showActionMenu, setShowActionMenu] = useState(false);
-    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-
-    // T004 — Media state
-    const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
-    const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
-    const [isSendingMedia, setIsSendingMedia] = useState(false);
-    const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
-    const [viewingImageMeta, setViewingImageMeta] = useState<{
-        name: string;
-        avatarUrl: string | null;
-        color: string;
-        sentAt: string;
-        isMe: boolean;
-    } | null>(null);
-    const [expandedStatusId, setExpandedStatusId] = useState<string | null>(null);
-    const [detailsMessage, setDetailsMessage] = useState<Message | null>(null);
-    const [isRecording, setIsRecording] = useState(false);
-    const [recordingDuration, setRecordingDuration] = useState(0);
-    const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
-    const [uploadProgressMap, setUploadProgressMap] = useState<Record<string, number>>({});
-    const [localStatusMap, setLocalStatusMap] = useState<
-        Record<string, 'pending' | 'sending' | 'failed'>
-    >({});
-
-    // T004 — Media refs
-    const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-    const audioPlayer = useAudioPlayer(null);
-    const playerStatus = useAudioPlayerStatus(audioPlayer);
-    const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const recordingStartRef = useRef<number>(0);
-
-    const [showScrollBtn, setShowScrollBtn] = useState(false);
-    const [loadingOlder, setLoadingOlder] = useState(false);
-    const [hasMoreOlder, setHasMoreOlder] = useState(true);
-
-    // Link preview state
-    const [inputLinkPreview, setInputLinkPreview] = useState<LinkPreview | null>(null);
-    const [previewDismissed, setPreviewDismissed] = useState(false);
-    const [previewCache, setPreviewCache] = useState<Record<string, LinkPreview | null>>({});
-    const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const fetchingUrlsRef = useRef<Set<string>>(new Set());
-    const lastDetectedUrlRef = useRef<string | null>(null);
-
-    const flatListRef = useRef<FlatList>(null);
-    const inputRef = useRef<TextInput>(null);
     const currentUser = useAuthStore((s) => s.user);
     const isOnline = useNetworkStore((s) => s.isOnline);
     const isOtherOnline = usePresenceStore((s) =>
@@ -184,15 +109,22 @@ export function ChatScreen({ navigation, route }: Props) {
     );
     const colors = useThemeColors();
     const styles = useMemo(() => makeStyles(colors), [colors]);
-    const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const swipeAnimMap = useRef<Record<string, Animated.Value>>({});
-    const pendingTimers = useRef<Record<string, ReturnType<typeof setTimeout>[]>>({});
-    const { showToast } = useToast();
 
-    // Nickname overrides the display name throughout this screen
+    const [showScrollBtn, setShowScrollBtn] = useState(false);
+    const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+    const [selectedMessageY, setSelectedMessageY] = useState(0);
+    const [showActionMenu, setShowActionMenu] = useState(false);
+    const [showForwardModal, setShowForwardModal] = useState(false);
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [expandedStatusId, setExpandedStatusId] = useState<string | null>(null);
+    const [detailsMessage, setDetailsMessage] = useState<Message | null>(null);
+
+    const inputRef = useRef<TextInput>(null);
+    const swipeAnimMap = useRef<Record<string, Animated.Value>>({});
+
     const headerDisplayName = nickname || chatUser?.displayName || '';
 
-    // If opened from a notification (no otherUser in params), resolve it from the conversations list
+    // If opened from a notification (no otherUser in params), resolve from conversation list
     useEffect(() => {
         if (chatUser) return;
         api.get<any[]>('/chat/conversations')
@@ -203,6 +135,30 @@ export function ChatScreen({ navigation, route }: Props) {
             .catch(() => {});
     }, [conversationId]);
 
+    const msg = useChatMessages({
+        conversationId,
+        chatUser,
+        currentUser: currentUser!,
+        isOnline,
+        onConversationDeleted: () => navigation.goBack(),
+        initialHighlightId,
+    });
+
+    const media = useChatMedia({
+        conversationId,
+        currentUser: currentUser!,
+        setMessages: msg.setMessages,
+        setLocalStatusMap: msg.setLocalStatusMap,
+    });
+
+    // playerStatus → stop playingMessageId when audio finishes
+    useEffect(() => {
+        if (media.playerStatus.didJustFinish) {
+            media.setPlayingMessageId(null);
+        }
+    }, [media.playerStatus.didJustFinish]);
+
+    // Set navigation header
     useEffect(() => {
         if (!chatUser) return;
         const relationshipEmoji = relationshipType === 'lover' ? '❤️' : '💙';
@@ -221,6 +177,17 @@ export function ChatScreen({ navigation, route }: Props) {
         }
 
         navigation.setOptions({
+            headerRight: () => (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity
+                        onPress={() => msg.setIsSearchingInChat(true)}
+                        hitSlop={8}
+                        style={{ padding: 4, marginRight: 4 }}
+                    >
+                        <Ionicons name="search-outline" size={22} color={colors.gray500} />
+                    </TouchableOpacity>
+                </View>
+            ),
             headerTitle: () => (
                 <TouchableOpacity
                     style={styles.headerRow}
@@ -253,7 +220,7 @@ export function ChatScreen({ navigation, route }: Props) {
                             )}
                         </View>
                         <Text style={styles.headerStatus}>
-                            {isTyping
+                            {msg.isTyping
                                 ? 'typing...'
                                 : getPresenceString(isOtherOnline, otherLastSeen || '')}
                         </Text>
@@ -261,897 +228,17 @@ export function ChatScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
             ),
         });
-    }, [chatUser, isTyping, isOtherOnline, otherLastSeen, relationshipType, nickname, contactId]);
+    }, [
+        chatUser,
+        msg.isTyping,
+        isOtherOnline,
+        otherLastSeen,
+        relationshipType,
+        nickname,
+        contactId,
+    ]);
 
-    useEffect(() => {
-        if (playerStatus.didJustFinish) {
-            setPlayingMessageId(null);
-        }
-    }, [playerStatus.didJustFinish]);
-
-    async function fetchLinkPreview(url: string): Promise<LinkPreview | null> {
-        const cached = await getCachedPreview(url);
-        if (cached) return cached;
-        try {
-            const { data } = await api.get<LinkPreview>(
-                `/link-preview?url=${encodeURIComponent(url)}`,
-            );
-            if (data.title || data.description || data.image) {
-                await savePreview(data);
-            }
-            return data;
-        } catch {
-            return null;
-        }
-    }
-
-    // Scan newly loaded messages for URLs and populate preview cache
-    useEffect(() => {
-        for (const msg of messages) {
-            if (msg.type !== 'text' || !msg.content) continue;
-            const match = msg.content.match(URL_REGEX);
-            if (!match) continue;
-            const url = match[0];
-            if (url in previewCache || fetchingUrlsRef.current.has(url)) continue;
-            fetchingUrlsRef.current.add(url);
-            fetchLinkPreview(url).then((preview) => {
-                fetchingUrlsRef.current.delete(url);
-                setPreviewCache((prev) => ({ ...prev, [url]: preview }));
-            });
-        }
-    }, [messages]);
-
-    async function loadMessages() {
-        // 1. Load from SQLite cache immediately
-        try {
-            const cached = await getDbMessages(conversationId, 50);
-            if (cached.length > 0) {
-                setMessages(cached.map(localRowToMessage));
-                if (isFirstLoad) setIsFirstLoad(false);
-            }
-        } catch (err) {
-            console.error('SQLite load failed:', err);
-        }
-
-        // 2. Fetch from server when online
-        if (!isOnline) {
-            if (isFirstLoad) setIsFirstLoad(false);
-            return;
-        }
-        try {
-            const { data } = await api.get<Message[]>(
-                `/chat/conversations/${conversationId}/messages`,
-            );
-            const sorted = data.sort(
-                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-            );
-            // Persist server messages to SQLite
-            for (const msg of sorted) {
-                void upsertServerMessage(msg, currentUser?.id);
-            }
-            // Merge server data: keep any optimistic (unsent) messages not yet on server,
-            // then fill in with server data — avoids wiping pending outbox messages
-            setMessages((prev) => {
-                const pendingLocal = prev.filter(
-                    (m) => m.syncStatus === 'pending' || m.syncStatus === 'failed',
-                );
-                const serverIds = new Set(sorted.map((m) => m.id));
-                const stillPending = pendingLocal.filter((m) => !serverIds.has(m.id));
-                return [...stillPending, ...sorted];
-            });
-            if (isFirstLoad) setIsFirstLoad(false);
-        } catch (err) {
-            console.error('Failed to load messages from server:', err);
-            if (isFirstLoad) setIsFirstLoad(false);
-        }
-    }
-
-    // Register outbox sync callback so UI updates when offline messages are delivered
-    useEffect(() => {
-        setOnMessageSynced((localId, serverId) => {
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m.localId === localId || m.id === localId
-                        ? { ...m, id: serverId, syncStatus: 'sent', status: null }
-                        : m,
-                ),
-            );
-            setLocalStatusMap((prev) => {
-                const n = { ...prev };
-                delete n[localId];
-                return n;
-            });
-        });
-        return () => setOnMessageSynced(null);
-    }, []);
-
-    useEffect(() => {
-        loadMessages();
-        api.post(`/chat/conversations/${conversationId}/read`).catch(() => {});
-
-        const socket = getSocket();
-        if (!socket || !chatUser) return;
-
-        // Notify sender that their messages are read on chat open
-        socket.emit('messages:read', { conversationId, senderId: chatUser.id });
-
-        // Load older messages when user scrolls to top (inverted FlatList triggers onEndReached)
-
-        function onNewMessage(data: { message: Message; conversationId: string }) {
-            if (data.conversationId === conversationId) {
-                // Persist to SQLite
-                void upsertServerMessage(data.message, currentUser?.id);
-                // Own messages are already in state from optimistic send;
-                // onMessageSynced handles the localId→serverId update — skip here to avoid duplicates
-                if (data.message.senderId === currentUser?.id) return;
-                setMessages((prev) => [
-                    {
-                        ...data.message,
-                        reactions: data.message.reactions ?? [],
-                        replyTo: data.message.replyTo ?? null,
-                    },
-                    ...prev,
-                ]);
-                api.post(`/chat/conversations/${conversationId}/read`).catch(() => {});
-                socket?.emit('messages:read', { conversationId, senderId: chatUser!.id });
-            }
-        }
-
-        function onMessageEdited(data: { message: Message; conversationId: string }) {
-            if (data.conversationId === conversationId) {
-                setMessages((prev) =>
-                    prev.map((m) =>
-                        m.id === data.message.id
-                            ? {
-                                  ...m,
-                                  ...data.message,
-                                  reactions: data.message.reactions ?? m.reactions,
-                              }
-                            : m,
-                    ),
-                );
-            }
-        }
-        function onMessageDeleted(data: { messageId: string; conversationId: string }) {
-            if (data.conversationId === conversationId) {
-                setMessages((prev) =>
-                    prev.map((m) =>
-                        m.id === data.messageId
-                            ? { ...m, deletedForEveryone: true, content: null, mediaUrl: null }
-                            : m,
-                    ),
-                );
-            }
-        }
-        function onReaction(data: {
-            messageId: string;
-            userId: string;
-            emoji: string;
-            action: string;
-            conversationId: string;
-        }) {
-            if (data.conversationId === conversationId) {
-                setMessages((prev) =>
-                    prev.map((m) => {
-                        if (m.id !== data.messageId) return m;
-                        let reactions = [...m.reactions];
-                        if (data.action === 'removed') {
-                            reactions = reactions.filter((r) => r.userId !== data.userId);
-                        } else {
-                            const idx = reactions.findIndex((r) => r.userId === data.userId);
-                            if (idx >= 0)
-                                reactions[idx] = { emoji: data.emoji, userId: data.userId };
-                            else reactions.push({ emoji: data.emoji, userId: data.userId });
-                        }
-                        return { ...m, reactions };
-                    }),
-                );
-            }
-        }
-        function onTypingStart(data: { userId: string; conversationId: string }) {
-            if (data.conversationId === conversationId && data.userId === chatUser!.id)
-                setIsTyping(true);
-        }
-        function onTypingStop(data: { userId: string; conversationId: string }) {
-            if (data.conversationId === conversationId && data.userId === chatUser!.id)
-                setIsTyping(false);
-        }
-        function onMessageStatus(data: { conversationId: string; status: string; userId: string }) {
-            if (data.conversationId === conversationId) {
-                setMessages((prev) =>
-                    prev.map((m) => {
-                        if (m.senderId !== currentUser?.id) return m;
-                        // Regression guard: never downgrade status (e.g. late 'delivered' must not overwrite 'seen')
-                        const currentIdx = STATUS_ORDER.indexOf(m.status as any ?? '');
-                        const nextIdx = STATUS_ORDER.indexOf(data.status as any);
-                        if (nextIdx <= currentIdx) return m;
-                        return { ...m, status: data.status as any };
-                    }),
-                );
-            }
-        }
-        function onConversationDeleted(data: { conversationId: string }) {
-            if (data.conversationId === conversationId) {
-                navigation.goBack();
-            }
-        }
-
-        socket.on('message:new', onNewMessage);
-        socket.on('message:edited', onMessageEdited);
-        socket.on('message:deleted', onMessageDeleted);
-        socket.on('message:reaction', onReaction);
-        socket.on('typing:start', onTypingStart);
-        socket.on('typing:stop', onTypingStop);
-        socket.on('messages:status', onMessageStatus);
-        socket.on('conversation:deleted', onConversationDeleted);
-        return () => {
-            socket.off('message:new', onNewMessage);
-            socket.off('message:edited', onMessageEdited);
-            socket.off('message:deleted', onMessageDeleted);
-            socket.off('message:reaction', onReaction);
-            socket.off('typing:start', onTypingStart);
-            socket.off('typing:stop', onTypingStop);
-            socket.off('messages:status', onMessageStatus);
-            socket.off('conversation:deleted', onConversationDeleted);
-        };
-    }, [conversationId, chatUser?.id]);
-
-    // Status progression order — used as regression guard in onMessageStatus handlers
-    // Server emits 'delivered' and 'read' (not 'seen')
-    const STATUS_ORDER = ['sent', 'delivered', 'read'] as const;
-
-    async function loadOlderMessages() {
-        if (loadingOlder || !hasMoreOlder) return;
-        if (messages.length === 0) return;
-
-        const oldest = messages[messages.length - 1].createdAt;
-        try {
-            setLoadingOlder(true);
-            const rows = await getDbMessages(conversationId, 50, oldest);
-            const mapped = rows.map(localRowToMessage);
-
-            if (mapped.length > 0) {
-                // SQLite hit — deduplicate and append
-                const existingIds = new Set(messages.map((m) => m.id));
-                const newOnes = mapped.filter((m) => !existingIds.has(m.id));
-                if (newOnes.length > 0) {
-                    setMessages((prev) => [...prev, ...newOnes]);
-                } else {
-                    setHasMoreOlder(false);
-                }
-                return;
-            }
-
-            // SQLite miss — if offline, silently stop and keep hasMoreOlder = true so
-            // the user can retry when they come back online
-            if (!isOnline) return;
-
-            // Online: fetch older messages from server using oldest message ID as cursor
-            const { data } = await api.get<Message[]>(
-                `/chat/conversations/${conversationId}/messages?cursor=${encodeURIComponent(messages[messages.length - 1].id)}&limit=50`,
-            );
-
-            if (data.length === 0) {
-                setHasMoreOlder(false);
-                return;
-            }
-
-            // Persist to SQLite for future offline access
-            for (const msg of data) {
-                void upsertServerMessage(msg, currentUser?.id);
-            }
-
-            // Deduplicate against current state (cursor boundary may overlap)
-            const existingIds = new Set(messages.map((m) => m.id));
-            const newFromServer = data.filter((m) => !existingIds.has(m.id));
-            if (newFromServer.length > 0) {
-                setMessages((prev) => [...prev, ...newFromServer]);
-            } else {
-                setHasMoreOlder(false);
-            }
-        } catch (err) {
-            // T007: network errors must not permanently block further load attempts
-            console.error('Failed to load older messages:', err);
-        } finally {
-            setLoadingOlder(false);
-        }
-    }
-
-    function handleTyping() {
-        const socket = getSocket();
-        if (!socket) return;
-        socket.emit('typing:start', { conversationId, recipientId: chatUser!.id });
-        if (typingTimeout.current) clearTimeout(typingTimeout.current);
-        typingTimeout.current = setTimeout(() => {
-            socket.emit('typing:stop', { conversationId, recipientId: chatUser!.id });
-        }, 2000);
-    }
-
-    // T005 — Upload helper (fetch handles RN FormData file objects more reliably than axios)
-    async function uploadMedia(uri: string, mimeType: string, fileName: string): Promise<string> {
-        const formData = new FormData();
-        formData.append('file', { uri, name: fileName, type: mimeType } as any);
-        const token = useAuthStore.getState().accessToken;
-        const response = await fetch(`${BASE_URL}/api/upload/chat`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-        });
-        if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`Upload failed ${response.status}: ${text}`);
-        }
-        const data = await response.json();
-        return data.url as string;
-    }
-
-    // T008 — Pick image
-    async function handlePickImage(source: 'gallery' | 'camera') {
-        setShowAttachmentSheet(false);
-        if (source === 'gallery') {
-            const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (!granted) {
-                showToast('error', 'Go to Settings > LoZo to allow photo access');
-                return;
-            }
-        }
-        const result =
-            source === 'gallery'
-                ? await ImagePicker.launchImageLibraryAsync({
-                      mediaTypes: ['images'],
-                      quality: 0.85,
-                  })
-                : await ImagePicker.launchCameraAsync({ quality: 0.85 });
-        if (!result.canceled && result.assets[0]) {
-            setPreviewImageUri(result.assets[0].uri);
-        }
-    }
-
-    // T010 — Send image
-    async function handleSendImage() {
-        if (!previewImageUri) return;
-        setIsSendingMedia(true);
-        const tempId = `temp_${Date.now()}`;
-        const capturedUri = previewImageUri;
-        const tempMsg: Message = {
-            id: tempId,
-            conversationId,
-            senderId: currentUser!.id,
-            type: 'image',
-            content: null,
-            mediaUrl: capturedUri,
-            mediaName: null,
-            mediaSize: null,
-            mediaDuration: null,
-            replyToId: null,
-            forwardedFromId: null,
-            isForwarded: false,
-            editedAt: null,
-            deletedForEveryone: false,
-            createdAt: new Date().toISOString(),
-            reactions: [],
-            replyTo: null,
-            status: 'sent',
-        };
-        setMessages((prev) => [tempMsg, ...prev]);
-        setPreviewImageUri(null);
-        try {
-            const url = await uploadMedia(capturedUri, 'image/jpeg', `image_${Date.now()}.jpg`);
-            const { data } = await api.post(`/chat/conversations/${conversationId}/messages`, {
-                type: 'image',
-                mediaUrl: url,
-            });
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m.id === tempId ? { ...data, reactions: data.reactions ?? [] } : m,
-                ),
-            );
-            setUploadProgressMap((prev) => {
-                const n = { ...prev };
-                delete n[tempId];
-                return n;
-            });
-        } catch (err: any) {
-            console.error(
-                'Upload image error:',
-                err?.response?.status,
-                err?.response?.data ?? err?.message,
-            );
-            showToast('error', 'Failed to send image');
-            setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        } finally {
-            setIsSendingMedia(false);
-        }
-    }
-
-    // T013 — Voice recording
-    async function startRecording() {
-        try {
-            const { granted } = await AudioModule.requestRecordingPermissionsAsync();
-            if (!granted) {
-                showToast('error', 'Go to Settings > LoZo to allow microphone access');
-                return;
-            }
-            await AudioModule.setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-            await audioRecorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
-            audioRecorder.record();
-            recordingStartRef.current = Date.now();
-            setIsRecording(true);
-            setRecordingDuration(0);
-            recordingTimerRef.current = setInterval(
-                () => setRecordingDuration((d) => d + 100),
-                100,
-            );
-        } catch {
-            showToast('error', 'Could not start recording');
-        }
-    }
-
-    async function stopAndSendRecording() {
-        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-        setIsRecording(false);
-        await audioRecorder.stop();
-        const uri = audioRecorder.uri;
-        const durationMs = Date.now() - recordingStartRef.current;
-        if (durationMs < 1000 || !uri) return;
-        const durationSecs = Math.round(durationMs / 1000);
-        const tempId = `temp_${Date.now()}`;
-        const tempMsg: Message = {
-            id: tempId,
-            conversationId,
-            senderId: currentUser!.id,
-            type: 'voice',
-            content: null,
-            mediaUrl: uri,
-            mediaName: null,
-            mediaSize: null,
-            mediaDuration: durationSecs,
-            replyToId: null,
-            forwardedFromId: null,
-            isForwarded: false,
-            editedAt: null,
-            deletedForEveryone: false,
-            createdAt: new Date().toISOString(),
-            reactions: [],
-            replyTo: null,
-            status: 'sent',
-        };
-        setMessages((prev) => [tempMsg, ...prev]);
-        try {
-            const url = await uploadMedia(uri, 'audio/m4a', `voice_${Date.now()}.m4a`);
-            const { data } = await api.post(`/chat/conversations/${conversationId}/messages`, {
-                type: 'voice',
-                mediaUrl: url,
-                mediaDuration: durationSecs,
-            });
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m.id === tempId ? { ...data, reactions: data.reactions ?? [] } : m,
-                ),
-            );
-        } catch {
-            showToast('error', 'Failed to send voice message');
-            setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        }
-    }
-
-    function cancelRecording() {
-        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-        audioRecorder.stop().catch(() => {});
-        setIsRecording(false);
-        setRecordingDuration(0);
-    }
-
-    // T016 — Voice playback
-    function handlePlayVoice(messageId: string, audioUrl: string) {
-        if (playingMessageId === messageId) {
-            audioPlayer.pause();
-            setPlayingMessageId(null);
-            return;
-        }
-        try {
-            audioPlayer.replace({ uri: audioUrl });
-            audioPlayer.play();
-            setPlayingMessageId(messageId);
-        } catch {
-            showToast('error', 'Could not play voice message');
-        }
-    }
-
-    // T018 — Pick and send file
-    async function handlePickFile() {
-        setShowAttachmentSheet(false);
-        const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
-        if (result.canceled || !result.assets[0]) return;
-        const asset = result.assets[0];
-        if (asset.size && asset.size > 50 * 1024 * 1024) {
-            showToast('error', 'File too large (max 50 MB)');
-            return;
-        }
-        const tempId = `temp_${Date.now()}`;
-        const tempMsg: Message = {
-            id: tempId,
-            conversationId,
-            senderId: currentUser!.id,
-            type: 'file',
-            content: null,
-            mediaUrl: null,
-            mediaName: asset.name,
-            mediaSize: asset.size ?? 0,
-            mediaDuration: null,
-            replyToId: null,
-            forwardedFromId: null,
-            isForwarded: false,
-            editedAt: null,
-            deletedForEveryone: false,
-            createdAt: new Date().toISOString(),
-            reactions: [],
-            replyTo: null,
-            status: 'sent',
-        };
-        setMessages((prev) => [tempMsg, ...prev]);
-        try {
-            const url = await uploadMedia(
-                asset.uri,
-                asset.mimeType ?? 'application/octet-stream',
-                asset.name,
-            );
-            const { data } = await api.post(`/chat/conversations/${conversationId}/messages`, {
-                type: 'file',
-                mediaUrl: url,
-                mediaName: asset.name,
-                mediaSize: asset.size ?? 0,
-            });
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m.id === tempId ? { ...data, reactions: data.reactions ?? [] } : m,
-                ),
-            );
-        } catch {
-            showToast('error', 'Failed to send file');
-            setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        }
-    }
-
-    async function handleEditStart() {
-        setEditingMessage(selectedMessage);
-        setText(selectedMessage?.content ?? '');
-        setShowActionMenu(false);
-        setSelectedMessage(null);
-        setReplyingTo(null);
-    }
-
-    async function handleEditSave() {
-        if (!editingMessage || !text.trim()) return;
-        try {
-            await api.put(`/chat/messages/${editingMessage.id}`, { content: text.trim() });
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m.id === editingMessage.id
-                        ? { ...m, content: text.trim(), editedAt: new Date().toISOString() }
-                        : m,
-                ),
-            );
-            setEditingMessage(null);
-            setText('');
-        } catch (err: any) {
-            showToast('error', err.response?.data?.error ?? 'Failed to edit message');
-        }
-    }
-
-    function handleDeleteForMe() {
-        setMessages((prev) => prev.filter((m) => m.id !== selectedMessage?.id));
-        setShowActionMenu(false);
-        setSelectedMessage(null);
-    }
-
-    function handleDeleteForEveryone() {
-        Alert.alert('Delete for everyone?', 'This cannot be undone.', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: async () => {
-                    try {
-                        await api.delete(`/chat/messages/${selectedMessage!.id}/everyone`);
-                        setMessages((prev) =>
-                            prev.map((m) =>
-                                m.id === selectedMessage!.id
-                                    ? {
-                                          ...m,
-                                          deletedForEveryone: true,
-                                          content: null,
-                                          mediaUrl: null,
-                                      }
-                                    : m,
-                            ),
-                        );
-                    } catch (err: any) {
-                        showToast('error', err.response?.data?.error ?? 'Failed to delete');
-                    }
-                    setShowActionMenu(false);
-                    setSelectedMessage(null);
-                },
-            },
-        ]);
-    }
-
-    async function handleCopy() {
-        if (!selectedMessage?.content) return;
-        await Clipboard.setStringAsync(selectedMessage.content);
-        showToast('success', 'Copied to clipboard');
-        setShowActionMenu(false);
-        setSelectedMessage(null);
-    }
-
-    async function handleForward(convId: string) {
-        if (!selectedMessage?.content) return;
-        if (convId === conversationId) {
-            Alert.alert('Cannot forward', 'You cannot forward a message to the same conversation.');
-            return;
-        }
-        try {
-            const socket = getSocket();
-            socket?.emit(
-                'message:send',
-                {
-                    conversationId: convId,
-                    type: 'text',
-                    content: selectedMessage.content,
-                    forwardedFromId: selectedMessage.id,
-                },
-                () => {},
-            );
-            showToast('success', 'Message forwarded');
-        } catch {
-            showToast('error', 'Failed to forward message');
-        }
-        setShowForwardModal(false);
-        setSelectedMessage(null);
-    }
-
-    function handleReact(emoji: string, messageId: string) {
-        const socket = getSocket();
-        const message = messages.find((m) => m.id === messageId);
-        if (!message) return;
-        const myCurrentReaction = message.reactions.find((r) => r.userId === currentUser!.id);
-        // Optimistic update
-        setMessages((prev) =>
-            prev.map((m) => {
-                if (m.id !== messageId) return m;
-                let reactions = m.reactions.filter((r) => r.userId !== currentUser!.id);
-                if (myCurrentReaction?.emoji !== emoji)
-                    reactions = [...reactions, { emoji, userId: currentUser!.id }];
-                return { ...m, reactions };
-            }),
-        );
-        if (socket) {
-            socket.emit(
-                'message:react',
-                { messageId, emoji, recipientId: chatUser!.id, conversationId },
-                (response: any) => {
-                    if (!response?.success) {
-                        // Rollback optimistic update
-                        setMessages((prev) =>
-                            prev.map((m) =>
-                                m.id === messageId ? { ...m, reactions: message.reactions } : m,
-                            ),
-                        );
-                        showToast('error', 'Failed to update reaction');
-                    }
-                },
-            );
-        }
-    }
-
-    function scrollToMessage(messageId: string | null | undefined) {
-        if (!messageId) return;
-        const target = messages.find((m) => m.id === messageId);
-        if (!target || !flatListRef.current) return;
-        flatListRef.current.scrollToItem({ item: target, animated: true });
-    }
-
-    function startPendingTimers(tempId: string) {
-        const t1 = setTimeout(() => {
-            setLocalStatusMap((prev) =>
-                prev[tempId] === 'pending' ? { ...prev, [tempId]: 'sending' } : prev,
-            );
-        }, 2000);
-        const t2 = setTimeout(() => {
-            setLocalStatusMap((prev) => (prev[tempId] ? { ...prev, [tempId]: 'failed' } : prev));
-        }, 20000);
-        pendingTimers.current[tempId] = [t1, t2];
-    }
-
-    function clearPendingTimers(tempId: string) {
-        pendingTimers.current[tempId]?.forEach(clearTimeout);
-        delete pendingTimers.current[tempId];
-    }
-
-    function emitTextMessage(
-        tempId: string,
-        content: string,
-        replyToId: string | null,
-        capturedReplyTo: Message | null,
-    ) {
-        const socket = getSocket();
-        if (!socket?.connected) {
-            // Offline — message stays in outbox with pending status
-            clearPendingTimers(tempId);
-            return;
-        }
-        socket.emit(
-            'message:send',
-            { conversationId, type: 'text', content, replyToId, localId: tempId },
-            (response: any) => {
-                clearPendingTimers(tempId);
-                if (response?.success) {
-                    void updateSentMessage(
-                        tempId,
-                        response.message?.id,
-                        response.message?.createdAt,
-                    );
-                    setLocalStatusMap((prev) => {
-                        const n = { ...prev };
-                        delete n[tempId];
-                        return n;
-                    });
-                    setMessages((prev) =>
-                        prev.map((m) =>
-                            m.id === tempId
-                                ? {
-                                      ...response.message,
-                                      reactions: [],
-                                      replyTo: capturedReplyTo
-                                          ? {
-                                                id: capturedReplyTo.id,
-                                                senderId: capturedReplyTo.senderId,
-                                                type: capturedReplyTo.type,
-                                                content: capturedReplyTo.content,
-                                                deletedForEveryone:
-                                                    capturedReplyTo.deletedForEveryone,
-                                            }
-                                          : null,
-                                      status: 'sent',
-                                  }
-                                : m,
-                        ),
-                    );
-                } else {
-                    setLocalStatusMap((prev) => ({ ...prev, [tempId]: 'failed' }));
-                }
-            },
-        );
-        socket.emit('typing:stop', { conversationId, recipientId: chatUser!.id });
-    }
-
-    // After socket ack, update SQLite with server ID
-    async function updateSentMessage(localId: string, serverId?: string, serverCreatedAt?: string) {
-        if (!serverId) return;
-        try {
-            await updateMessageStatus(localId, {
-                server_id: serverId,
-                sync_status: 'sent',
-                server_created_at: serverCreatedAt,
-            });
-        } catch (err) {
-            console.error('Failed to update sent message in SQLite:', err);
-        }
-    }
-
-    function handleSend() {
-        if (editingMessage) {
-            void handleEditSave();
-            return;
-        }
-        if (!text.trim()) return;
-
-        const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        const content = text.trim();
-        const capturedReply = replyingTo;
-        const now = new Date().toISOString();
-
-        const tempMsg: Message = {
-            id: localId,
-            localId,
-            syncStatus: 'pending',
-            conversationId,
-            senderId: currentUser!.id,
-            type: 'text',
-            content,
-            mediaUrl: null,
-            mediaName: null,
-            mediaSize: null,
-            mediaDuration: null,
-            replyToId: capturedReply?.id ?? null,
-            replyTo: capturedReply
-                ? {
-                      id: capturedReply.id,
-                      senderId: capturedReply.senderId,
-                      type: capturedReply.type,
-                      content: capturedReply.content,
-                      deletedForEveryone: capturedReply.deletedForEveryone,
-                  }
-                : null,
-            forwardedFromId: null,
-            isForwarded: false,
-            editedAt: null,
-            deletedForEveryone: false,
-            createdAt: now,
-            reactions: [],
-            status: null,
-        };
-
-        setMessages((prev) => [tempMsg, ...prev]);
-        setText('');
-        setReplyingTo(null);
-        setInputLinkPreview(null);
-        setPreviewDismissed(false);
-        lastDetectedUrlRef.current = null;
-        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-        setLocalStatusMap((prev) => ({ ...prev, [localId]: 'pending' }));
-        startPendingTimers(localId);
-
-        // Write to SQLite and enqueue outbox
-        const row: LocalMessageRow = {
-            local_id: localId,
-            server_id: null,
-            conversation_id: conversationId,
-            sender_id: currentUser!.id,
-            type: 'text',
-            content,
-            media_url: null,
-            media_name: null,
-            media_size: null,
-            media_duration: null,
-            reply_to_id: capturedReply?.id ?? null,
-            is_forwarded: 0,
-            forwarded_from_id: null,
-            edited_at: null,
-            deleted_for_everyone: 0,
-            sync_status: 'pending',
-            created_at: now,
-            server_created_at: null,
-        };
-        void insertMessage(row);
-        void enqueueOutbox(localId, conversationId, {
-            conversationId,
-            type: 'text',
-            content,
-            localId,
-            replyToId: capturedReply?.id ?? null,
-        });
-
-        // Send immediately if online; outbox flush handles offline case on reconnect
-        emitTextMessage(localId, content, capturedReply?.id ?? null, capturedReply);
-    }
-
-    function retrySend(message: Message) {
-        if (!message.content) return;
-        const localId = message.localId ?? message.id;
-        setLocalStatusMap((prev) => ({ ...prev, [localId]: 'pending' }));
-        startPendingTimers(localId);
-        // If has localId it was queued through outbox — use outbox retry
-        if (message.localId) {
-            void outboxRetry(message.localId);
-        } else {
-            emitTextMessage(localId, message.content, message.replyToId ?? null, null);
-        }
-    }
-
-    function handleDiscard(message: Message) {
-        const localId = message.localId ?? message.id;
-        void outboxDiscard(localId);
-        void deleteMessage(localId);
-        setMessages((prev) => prev.filter((m) => m.id !== message.id && m.localId !== localId));
-        setLocalStatusMap((prev) => {
-            const n = { ...prev };
-            delete n[localId];
-            return n;
-        });
-    }
-
-    // Messenger-style status icon: sent=gray circle, delivered=blue circle, read=avatar
+    // Messenger-style status icon
     function MsgStatusIcon({ status, size = 14 }: { status: string; size?: number }) {
         if (status === 'read') {
             return (
@@ -1213,13 +300,11 @@ export function ChatScreen({ navigation, route }: Props) {
 
     function renderMessage({ item, index }: { item: Message; index: number }) {
         const isMe = item.senderId === currentUser?.id;
-        // In inverted FlatList: index 0 = newest (bottom), index+1 = older (above)
-        const prevMsg = messages[index - 1]; // newer = shown below
-        const nextMsg = messages[index + 1]; // older = shown above
-        const isBottomOfSection = !prevMsg || !isSameSection(item, prevMsg); // show avatar here
+        const prevMsg = msg.messages[index - 1];
+        const nextMsg = msg.messages[index + 1];
+        const isBottomOfSection = !prevMsg || !isSameSection(item, prevMsg);
         const isTopOfSection = !nextMsg || !isSameSection(item, nextMsg);
-
-        const localStatus = localStatusMap[item.id];
+        const localStatus = msg.localStatusMap[item.id];
 
         if (item.deletedForEveryone) {
             return (
@@ -1235,6 +320,7 @@ export function ChatScreen({ navigation, route }: Props) {
                 </View>
             );
         }
+
         const swipeAnim =
             swipeAnimMap.current[item.id] ??
             (swipeAnimMap.current[item.id] = new Animated.Value(0));
@@ -1245,15 +331,14 @@ export function ChatScreen({ navigation, route }: Props) {
             },
             onPanResponderRelease: (_, { dx, vx }) => {
                 if (dx > 40 || vx > 0.5) {
-                    setReplyingTo(item);
+                    msg.setReplyingTo(item);
                     setTimeout(() => inputRef.current?.focus(), 50);
                 }
                 Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true }).start();
             },
         });
 
-        // Last sent message by me → always show status below
-        const lastSentByMe = messages.find(
+        const lastSentByMe = msg.messages.find(
             (m) => m.senderId === currentUser?.id && !m.deletedForEveryone,
         );
         const isLastSentByMe = isMe && lastSentByMe?.id === item.id;
@@ -1261,7 +346,6 @@ export function ChatScreen({ navigation, route }: Props) {
         const showStatusRow = isMe && item.status && (isLastSentByMe || isExpanded);
         const isImageMsg = item.type === 'image' && !!item.mediaUrl;
 
-        // Bubble corner style — clip inner corners for grouped messages (Messenger-style)
         const bubbleRadius: any = {
             borderRadius: 18,
             ...(isMe
@@ -1283,7 +367,6 @@ export function ChatScreen({ navigation, route }: Props) {
                     isBottomOfSection ? styles.sectionBottom : styles.sectionMiddle,
                 ]}
             >
-                {/* Avatar column for other user */}
                 {!isMe &&
                     (isBottomOfSection ? (
                         <View style={styles.avatarCol}>
@@ -1306,264 +389,295 @@ export function ChatScreen({ navigation, route }: Props) {
                     }}
                     {...swipePan.panHandlers}
                 >
-                    <TouchableOpacity
-                        activeOpacity={isImageMsg ? 0.95 : 0.85}
-                        delayLongPress={400}
-                        onPress={() => {
-                            if (localStatus === 'failed') {
-                                Alert.alert(
-                                    'Message not sent',
-                                    'This message could not be delivered.',
-                                    [
-                                        { text: 'Cancel', style: 'cancel' },
-                                        {
-                                            text: 'Discard',
-                                            style: 'destructive',
-                                            onPress: () => handleDiscard(item),
-                                        },
-                                        { text: 'Retry', onPress: () => retrySend(item) },
-                                    ],
-                                );
-                                return;
-                            }
-                            if (isImageMsg) {
-                                setViewingImageUrl(item.mediaUrl!);
-                                setViewingImageMeta({
-                                    name: isMe ? 'You' : chatUser!.displayName,
-                                    avatarUrl: isMe
-                                        ? (currentUser?.avatarUrl ?? null)
-                                        : chatUser!.avatarUrl,
-                                    color: isMe
-                                        ? (currentUser.avatarColor ?? colors.primary)
-                                        : (chatUser!.avatarColor ?? colors.primary),
-                                    sentAt: item.createdAt,
-                                    isMe,
-                                });
-                                return;
-                            }
-                            setExpandedStatusId((prev) => (prev === item.id ? null : item.id));
+                    <Animated.View
+                        style={{
+                            backgroundColor:
+                                msg.highlightedMessageId === item.id ||
+                                msg.highlightedMessageId === item.localId
+                                    ? msg.highlightAnim.interpolate({
+                                          inputRange: [0, 1],
+                                          outputRange: [
+                                              'rgba(255,255,255,0)',
+                                              'rgba(255,214,10,0.3)',
+                                          ],
+                                      })
+                                    : 'transparent',
+                            borderRadius: 20,
+                            padding: 2,
                         }}
-                        onLongPress={(event) => {
-                            if (item.deletedForEveryone) return;
-                            setSelectedMessageY(event.nativeEvent.pageY);
-                            setSelectedMessage(item);
-                            setShowActionMenu(true);
-                        }}
-                        style={{ alignItems: isMe ? 'flex-end' : 'flex-start', maxWidth: '85%' }}
                     >
-                        {item.isForwarded && <Text style={styles.forwardedLabel}>Forwarded</Text>}
-                        {item.replyTo && !item.deletedForEveryone && (
-                            <TouchableOpacity onPress={() => scrollToMessage(item.replyToId)}>
-                                <View
-                                    style={[
-                                        styles.replyBubble,
-                                        isMe ? styles.replyBubbleMe : styles.replyBubbleOther,
-                                    ]}
+                        <TouchableOpacity
+                            activeOpacity={isImageMsg ? 0.95 : 0.85}
+                            delayLongPress={400}
+                            onPress={() => {
+                                if (localStatus === 'failed') {
+                                    Alert.alert(
+                                        'Message not sent',
+                                        'This message could not be delivered.',
+                                        [
+                                            { text: 'Cancel', style: 'cancel' },
+                                            {
+                                                text: 'Discard',
+                                                style: 'destructive',
+                                                onPress: () => msg.handleDiscard(item),
+                                            },
+                                            { text: 'Retry', onPress: () => msg.retrySend(item) },
+                                        ],
+                                    );
+                                    return;
+                                }
+                                if (isImageMsg) {
+                                    media.setViewingImageUrl(item.mediaUrl!);
+                                    media.setViewingImageMeta({
+                                        name: isMe ? 'You' : chatUser!.displayName,
+                                        avatarUrl: isMe
+                                            ? (currentUser?.avatarUrl ?? null)
+                                            : chatUser!.avatarUrl,
+                                        color: isMe
+                                            ? (currentUser!.avatarColor ?? colors.primary)
+                                            : (chatUser!.avatarColor ?? colors.primary),
+                                        sentAt: item.createdAt,
+                                        isMe,
+                                    });
+                                    return;
+                                }
+                                setExpandedStatusId((prev) => (prev === item.id ? null : item.id));
+                            }}
+                            onLongPress={(event) => {
+                                if (item.deletedForEveryone) return;
+                                setSelectedMessageY(event.nativeEvent.pageY);
+                                setSelectedMessage(item);
+                                setShowActionMenu(true);
+                            }}
+                            style={{
+                                alignItems: isMe ? 'flex-end' : 'flex-start',
+                                maxWidth: '85%',
+                            }}
+                        >
+                            {item.isForwarded && (
+                                <Text style={styles.forwardedLabel}>Forwarded</Text>
+                            )}
+                            {item.replyTo && !item.deletedForEveryone && (
+                                <TouchableOpacity
+                                    onPress={() => msg.scrollToMessage(item.replyToId)}
                                 >
-                                    <Text style={styles.replyBubbleName}>
-                                        {item.replyTo.senderId === currentUser?.id
-                                            ? 'You'
-                                            : chatUser!.displayName}
-                                    </Text>
-                                    <Text style={styles.replyBubbleContent} numberOfLines={1}>
-                                        {item.replyTo.deletedForEveryone
-                                            ? 'Message deleted'
-                                            : item.replyTo.content}
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-                        )}
-
-                        {/* IMAGE: no bubble container */}
-                        {isImageMsg ? (
-                            <View style={[styles.imageBubble, bubbleRadius]}>
-                                <Image
-                                    source={{ uri: item.mediaUrl! }}
-                                    style={styles.imageThumbnail}
-                                    resizeMode="cover"
-                                />
-                                {uploadProgressMap[item.id] !== undefined && (
-                                    <View style={styles.uploadOverlay}>
-                                        <View
-                                            style={[
-                                                styles.uploadBar,
-                                                { width: `${uploadProgressMap[item.id]}%` as any },
-                                            ]}
-                                        />
+                                    <View
+                                        style={[
+                                            styles.replyBubble,
+                                            isMe ? styles.replyBubbleMe : styles.replyBubbleOther,
+                                        ]}
+                                    >
+                                        <Text style={styles.replyBubbleName}>
+                                            {item.replyTo.senderId === currentUser?.id
+                                                ? 'You'
+                                                : chatUser!.displayName}
+                                        </Text>
+                                        <Text style={styles.replyBubbleContent} numberOfLines={1}>
+                                            {item.replyTo.deletedForEveryone
+                                                ? 'Message deleted'
+                                                : item.replyTo.content}
+                                        </Text>
                                     </View>
-                                )}
-                                <View style={styles.imageTimeOverlay}>
-                                    <Text style={styles.imageTimeText}>
-                                        {formatMessageTime(item.createdAt)}
-                                    </Text>
-                                    {isMe && item.status === 'read' && (
-                                        <View
-                                            style={{
-                                                width: 14,
-                                                height: 14,
-                                                borderRadius: 7,
-                                                overflow: 'hidden',
-                                                marginLeft: 3,
-                                            }}
-                                        >
-                                            <Avatar
-                                                uri={chatUser!.avatarUrl}
-                                                name={chatUser!.displayName}
-                                                color={chatUser!.avatarColor ?? colors.primary}
-                                                size={14}
+                                </TouchableOpacity>
+                            )}
+
+                            {isImageMsg ? (
+                                <View style={[styles.imageBubble, bubbleRadius]}>
+                                    <Image
+                                        source={{ uri: item.mediaUrl! }}
+                                        style={styles.imageThumbnail}
+                                        resizeMode="cover"
+                                    />
+                                    {media.uploadProgressMap[item.id] !== undefined && (
+                                        <View style={styles.uploadOverlay}>
+                                            <View
+                                                style={[
+                                                    styles.uploadBar,
+                                                    {
+                                                        width: `${media.uploadProgressMap[item.id]}%` as any,
+                                                    },
+                                                ]}
                                             />
                                         </View>
                                     )}
-                                </View>
-                            </View>
-                        ) : (
-                            /* TEXT / VOICE / FILE: bubble */
-                            <View
-                                style={[
-                                    styles.messageBubble,
-                                    isMe ? styles.bubbleMe : styles.bubbleOther,
-                                    bubbleRadius,
-                                    localStatus === 'failed' && styles.bubbleFailed,
-                                ]}
-                            >
-                                {item.type === 'text' && (
-                                    <>
-                                        <Text
-                                            style={[
-                                                styles.messageText,
-                                                isMe ? styles.textMe : styles.textOther,
-                                            ]}
-                                        >
-                                            {item.content}
+                                    <View style={styles.imageTimeOverlay}>
+                                        <Text style={styles.imageTimeText}>
+                                            {formatMessageTime(item.createdAt)}
                                         </Text>
-                                        {(() => {
-                                            const match = item.content?.match(URL_REGEX);
-                                            if (!match) return null;
-                                            const preview = previewCache[match[0]];
-                                            if (!preview) return null;
-                                            return (
-                                                <LinkPreviewCard preview={preview} isOwn={isMe} />
-                                            );
-                                        })()}
-                                    </>
-                                )}
-                                {item.type === 'voice' && item.mediaUrl && (
-                                    <VoiceMessageBubble
-                                        messageId={item.id}
-                                        audioUrl={item.mediaUrl}
-                                        duration={item.mediaDuration ?? 0}
-                                        isPlaying={playingMessageId === item.id}
-                                        isMe={isMe}
-                                        onPlay={() => handlePlayVoice(item.id, item.mediaUrl!)}
-                                        onPause={() => handlePlayVoice(item.id, item.mediaUrl!)}
-                                    />
-                                )}
-                                {item.type === 'file' && item.mediaUrl && (
-                                    <FileBubble
-                                        fileName={item.mediaName ?? 'File'}
-                                        fileSize={item.mediaSize ?? 0}
-                                        fileUrl={item.mediaUrl}
-                                        isMe={isMe}
-                                    />
-                                )}
-                                <View style={styles.messageFooter}>
-                                    {item.editedAt && (
+                                        {isMe && item.status === 'read' && (
+                                            <View
+                                                style={{
+                                                    width: 14,
+                                                    height: 14,
+                                                    borderRadius: 7,
+                                                    overflow: 'hidden',
+                                                    marginLeft: 3,
+                                                }}
+                                            >
+                                                <Avatar
+                                                    uri={chatUser!.avatarUrl}
+                                                    name={chatUser!.displayName}
+                                                    color={chatUser!.avatarColor ?? colors.primary}
+                                                    size={14}
+                                                />
+                                            </View>
+                                        )}
+                                    </View>
+                                </View>
+                            ) : (
+                                <View
+                                    style={[
+                                        styles.messageBubble,
+                                        isMe ? styles.bubbleMe : styles.bubbleOther,
+                                        bubbleRadius,
+                                        localStatus === 'failed' && styles.bubbleFailed,
+                                    ]}
+                                >
+                                    {item.type === 'text' && (
+                                        <>
+                                            <Text
+                                                style={[
+                                                    styles.messageText,
+                                                    isMe ? styles.textMe : styles.textOther,
+                                                ]}
+                                            >
+                                                {item.content}
+                                            </Text>
+                                            {(() => {
+                                                const match = item.content?.match(msg.URL_REGEX);
+                                                if (!match) return null;
+                                                const preview = msg.previewCache[match[0]];
+                                                if (!preview) return null;
+                                                return (
+                                                    <LinkPreviewCard
+                                                        preview={preview}
+                                                        isOwn={isMe}
+                                                    />
+                                                );
+                                            })()}
+                                        </>
+                                    )}
+                                    {item.type === 'voice' && item.mediaUrl && (
+                                        <VoiceMessageBubble
+                                            messageId={item.id}
+                                            audioUrl={item.mediaUrl}
+                                            duration={item.mediaDuration ?? 0}
+                                            isPlaying={media.playingMessageId === item.id}
+                                            isMe={isMe}
+                                            onPlay={() =>
+                                                media.handlePlayVoice(item.id, item.mediaUrl!)
+                                            }
+                                            onPause={() =>
+                                                media.handlePlayVoice(item.id, item.mediaUrl!)
+                                            }
+                                        />
+                                    )}
+                                    {item.type === 'file' && item.mediaUrl && (
+                                        <FileBubble
+                                            fileName={item.mediaName ?? 'File'}
+                                            fileSize={item.mediaSize ?? 0}
+                                            fileUrl={item.mediaUrl}
+                                            isMe={isMe}
+                                        />
+                                    )}
+                                    <View style={styles.messageFooter}>
+                                        {item.editedAt && (
+                                            <Text
+                                                style={[
+                                                    styles.metaText,
+                                                    isMe ? styles.metaMe : styles.metaOther,
+                                                ]}
+                                            >
+                                                edited
+                                            </Text>
+                                        )}
                                         <Text
                                             style={[
                                                 styles.metaText,
                                                 isMe ? styles.metaMe : styles.metaOther,
                                             ]}
                                         >
-                                            edited
+                                            {formatMessageTime(item.createdAt)}
+                                        </Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            {localStatus === 'sending' && (
+                                <Text style={styles.sendingText}>Sending...</Text>
+                            )}
+                            {localStatus === 'failed' && (
+                                <Text style={styles.failedText}>Unable to send · Tap to retry</Text>
+                            )}
+
+                            {showStatusRow && !localStatus && (
+                                <View
+                                    style={[
+                                        styles.statusRow,
+                                        isMe
+                                            ? { alignSelf: 'flex-end' }
+                                            : { alignSelf: 'flex-start' },
+                                    ]}
+                                >
+                                    {isExpanded && (
+                                        <Text style={styles.statusDate}>
+                                            {new Date(item.createdAt).toLocaleString([], {
+                                                month: 'short',
+                                                day: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                            })}
                                         </Text>
                                     )}
-                                    <Text
-                                        style={[
-                                            styles.metaText,
-                                            isMe ? styles.metaMe : styles.metaOther,
-                                        ]}
-                                    >
-                                        {formatMessageTime(item.createdAt)}
-                                    </Text>
+                                    <MsgStatusIcon status={item.status!} size={14} />
+                                    {(isExpanded || isLastSentByMe) && (
+                                        <Text style={styles.statusLabel}>
+                                            {item.status === 'sent'
+                                                ? 'Sent'
+                                                : item.status === 'delivered'
+                                                  ? 'Delivered'
+                                                  : 'Seen'}
+                                        </Text>
+                                    )}
                                 </View>
-                            </View>
-                        )}
+                            )}
+                        </TouchableOpacity>
 
-                        {/* Local send status (pending/sending/failed) */}
-                        {localStatus === 'sending' && (
-                            <Text style={styles.sendingText}>Sending...</Text>
-                        )}
-                        {localStatus === 'failed' && (
-                            <Text style={styles.failedText}>Unable to send · Tap to retry</Text>
-                        )}
-
-                        {/* Messenger-style delivery status row */}
-                        {showStatusRow && !localStatus && (
+                        {item.reactions.length > 0 && !item.deletedForEveryone && (
                             <View
                                 style={[
-                                    styles.statusRow,
-                                    isMe ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' },
+                                    styles.reactionsRow,
+                                    isMe
+                                        ? { alignSelf: 'flex-end', marginRight: 8 }
+                                        : { alignSelf: 'flex-start', marginLeft: 8 },
                                 ]}
                             >
-                                {isExpanded && (
-                                    <Text style={styles.statusDate}>
-                                        {new Date(item.createdAt).toLocaleString([], {
-                                            month: 'short',
-                                            day: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                        })}
-                                    </Text>
-                                )}
-                                <MsgStatusIcon status={item.status!} size={14} />
-                                {(isExpanded || isLastSentByMe) && (
-                                    <Text style={styles.statusLabel}>
-                                        {item.status === 'sent'
-                                            ? 'Sent'
-                                            : item.status === 'delivered'
-                                              ? 'Delivered'
-                                              : 'Seen'}
-                                    </Text>
-                                )}
+                                {groupReactions(item.reactions, currentUser!.id).map((pill) => (
+                                    <TouchableOpacity
+                                        key={pill.emoji}
+                                        style={[
+                                            styles.reactionPill,
+                                            pill.mine && styles.reactionPillMine,
+                                        ]}
+                                        onPress={() => msg.handleReact(pill.emoji, item.id)}
+                                    >
+                                        <Text style={styles.reactionPillText}>
+                                            {pill.emoji} {pill.count}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
                             </View>
                         )}
-                    </TouchableOpacity>
-
-                    {item.reactions.length > 0 && !item.deletedForEveryone && (
-                        <View
-                            style={[
-                                styles.reactionsRow,
-                                isMe
-                                    ? { alignSelf: 'flex-end', marginRight: 8 }
-                                    : { alignSelf: 'flex-start', marginLeft: 8 },
-                            ]}
-                        >
-                            {groupReactions(item.reactions, currentUser!.id).map((pill) => (
-                                <TouchableOpacity
-                                    key={pill.emoji}
-                                    style={[
-                                        styles.reactionPill,
-                                        pill.mine && styles.reactionPillMine,
-                                    ]}
-                                    onPress={() => handleReact(pill.emoji, item.id)}
-                                >
-                                    <Text style={styles.reactionPillText}>
-                                        {pill.emoji} {pill.count}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    )}
+                    </Animated.View>
                 </Animated.View>
 
-                {/* Avatar column for me — right side */}
                 {isMe &&
                     (isBottomOfSection ? (
                         <View style={[styles.avatarCol, { marginRight: 0, marginLeft: 4 }]}>
                             <Avatar
                                 uri={currentUser?.avatarUrl ?? null}
                                 name={currentUser?.displayName ?? 'Me'}
-                                color={currentUser.avatarColor ?? colors.primary}
+                                color={currentUser!.avatarColor ?? colors.primary}
                                 size={28}
                             />
                         </View>
@@ -1574,11 +688,11 @@ export function ChatScreen({ navigation, route }: Props) {
         );
     }
 
-    const canSend = text.trim().length > 0;
+    const canSend = msg.text.trim().length > 0;
 
     if (!chatUser) return <MessageSkeleton />;
 
-    if (isFirstLoad && messages.length === 0) {
+    if (msg.isFirstLoad && msg.messages.length === 0) {
         if (isOnline) return <MessageSkeleton />;
         return (
             <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
@@ -1606,152 +720,173 @@ export function ChatScreen({ navigation, route }: Props) {
             keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 100}
         >
             <OfflineBanner />
-            <FlatList
-                ref={flatListRef}
-                data={messages}
-                keyExtractor={(item) => item.id}
-                renderItem={renderMessage}
-                inverted
-                contentContainerStyle={styles.messagesList}
-                keyboardShouldPersistTaps="never"
-                ListHeaderComponent={isTyping ? <TypingIndicator /> : null}
-                onScroll={(e) => {
-                    setShowScrollBtn(e.nativeEvent.contentOffset.y > 300);
-                }}
-                scrollEventThrottle={100}
-                onEndReached={() => {
-                    void loadOlderMessages();
-                }}
-                onEndReachedThreshold={0.2}
-                ListFooterComponent={
-                    loadingOlder ? (
-                        <View style={{ padding: 8 }}>
-                            <ActivityIndicator size="small" color={colors.primary} />
-                        </View>
-                    ) : null
-                }
-            />
-            {showScrollBtn && (
-                <TouchableOpacity
-                    style={styles.scrollToBottomBtn}
-                    onPress={() =>
-                        flatListRef.current?.scrollToOffset({ offset: 0, animated: true })
-                    }
-                    activeOpacity={0.8}
-                >
-                    <Text style={styles.scrollToBottomIcon}>↓</Text>
-                </TouchableOpacity>
-            )}
-            {editingMessage && (
-                <View style={styles.editingBar}>
-                    <Text style={styles.editingBarText}>Editing message</Text>
-                    <TouchableOpacity
-                        onPress={() => {
-                            setEditingMessage(null);
-                            setText('');
+            {msg.isSearchingInChat && (
+                <>
+                    <SearchBar
+                        onSearch={msg.handleChatSearch}
+                        onClose={() => {
+                            msg.setIsSearchingInChat(false);
+                            msg.setChatSearchQuery('');
                         }}
-                    >
-                        <Text style={styles.editingBarCancel}>Cancel</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-            {replyingTo && (
-                <ReplyPreviewBar
-                    replyingTo={replyingTo}
-                    senderName={
-                        replyingTo.senderId === currentUser?.id ? 'You' : chatUser!.displayName
-                    }
-                    onCancel={() => setReplyingTo(null)}
-                />
-            )}
-            {inputLinkPreview && !previewDismissed && (
-                <View style={{ paddingHorizontal: 8, paddingBottom: 4 }}>
-                    <LinkPreviewCard
-                        preview={inputLinkPreview}
-                        onDismiss={() => setPreviewDismissed(true)}
                     />
-                </View>
+                    <SearchResults
+                        results={msg.chatSearchResults}
+                        query={msg.chatSearchQuery}
+                        onSelect={msg.handleChatSearchResultSelect}
+                    />
+                </>
             )}
-            <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-                {isRecording ? (
-                    <>
-                        <TouchableOpacity style={styles.cancelRecordBtn} onPress={cancelRecording}>
-                            <Ionicons name="close-circle" size={28} color={colors.gray400} />
+            {!msg.isSearchingInChat && (
+                <>
+                    <FlatList
+                        ref={msg.flatListRef}
+                        data={msg.messages}
+                        keyExtractor={(item) => item.id}
+                        renderItem={renderMessage}
+                        inverted
+                        contentContainerStyle={styles.messagesList}
+                        keyboardShouldPersistTaps="never"
+                        ListHeaderComponent={msg.isTyping ? <TypingIndicator /> : null}
+                        onScroll={(e) => {
+                            setShowScrollBtn(e.nativeEvent.contentOffset.y > 300);
+                        }}
+                        scrollEventThrottle={100}
+                        onEndReached={() => void msg.loadOlderMessages()}
+                        onEndReachedThreshold={0.2}
+                        ListFooterComponent={
+                            msg.loadingOlder ? (
+                                <View style={{ padding: 8 }}>
+                                    <ActivityIndicator size="small" color={colors.primary} />
+                                </View>
+                            ) : null
+                        }
+                    />
+                    {showScrollBtn && (
+                        <TouchableOpacity
+                            style={styles.scrollToBottomBtn}
+                            onPress={() =>
+                                msg.flatListRef.current?.scrollToOffset({
+                                    offset: 0,
+                                    animated: true,
+                                })
+                            }
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.scrollToBottomIcon}>↓</Text>
                         </TouchableOpacity>
-                        <View style={styles.recordingIndicator}>
-                            <View style={styles.recordingDot} />
-                            <Text style={styles.recordingTimer}>
-                                {formatDuration(recordingDuration / 1000)}
-                            </Text>
+                    )}
+                    {msg.editingMessage && (
+                        <View style={styles.editingBar}>
+                            <Text style={styles.editingBarText}>Editing message</Text>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    msg.setEditingMessage(null);
+                                    msg.setText('');
+                                }}
+                            >
+                                <Text style={styles.editingBarCancel}>Cancel</Text>
+                            </TouchableOpacity>
                         </View>
-                        <TouchableOpacity
-                            onPress={stopAndSendRecording}
-                            style={[styles.sendButton, styles.sendActive]}
-                        >
-                            <Text style={[styles.sendIcon, styles.sendIconActive]}>↑</Text>
-                        </TouchableOpacity>
-                    </>
-                ) : (
-                    <>
-                        <TouchableOpacity
-                            style={[styles.attachBtn, isSendingMedia && styles.attachBtnDisabled]}
-                            onPress={() => setShowAttachmentSheet(true)}
-                            disabled={isSendingMedia}
-                        >
-                            <Ionicons
-                                name="attach-outline"
-                                size={24}
-                                color={isSendingMedia ? colors.gray300 : colors.gray400}
-                            />
-                        </TouchableOpacity>
-                        <TextInput
-                            ref={inputRef}
-                            value={text}
-                            onChangeText={(t) => {
-                                setText(t);
-                                handleTyping();
-                                // URL detection for input preview
-                                if (previewDebounceRef.current)
-                                    clearTimeout(previewDebounceRef.current);
-                                const match = t.match(URL_REGEX);
-                                if (!match) {
-                                    setInputLinkPreview(null);
-                                    lastDetectedUrlRef.current = null;
-                                    return;
-                                }
-                                const url = match[0];
-                                if (url !== lastDetectedUrlRef.current) {
-                                    setPreviewDismissed(false);
-                                    lastDetectedUrlRef.current = url;
-                                }
-                                previewDebounceRef.current = setTimeout(() => {
-                                    fetchLinkPreview(url).then(setInputLinkPreview);
-                                }, 800);
-                            }}
-                            placeholder="Message..."
-                            style={styles.textInput}
-                            placeholderTextColor={colors.gray400}
-                            multiline
-                            maxLength={5000}
+                    )}
+                    {msg.replyingTo && (
+                        <ReplyPreviewBar
+                            replyingTo={msg.replyingTo}
+                            senderName={
+                                msg.replyingTo.senderId === currentUser?.id
+                                    ? 'You'
+                                    : chatUser!.displayName
+                            }
+                            onCancel={() => msg.setReplyingTo(null)}
                         />
-                        {canSend ? (
-                            <TouchableOpacity
-                                onPress={handleSend}
-                                style={[styles.sendButton, styles.sendActive]}
-                            >
-                                <Text style={[styles.sendIcon, styles.sendIconActive]}>↑</Text>
-                            </TouchableOpacity>
+                    )}
+                    {msg.inputLinkPreview && !msg.previewDismissed && (
+                        <View style={{ paddingHorizontal: 8, paddingBottom: 4 }}>
+                            <LinkPreviewCard
+                                preview={msg.inputLinkPreview}
+                                onDismiss={() => msg.setPreviewDismissed(true)}
+                            />
+                        </View>
+                    )}
+                    <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+                        {media.isRecording ? (
+                            <>
+                                <TouchableOpacity
+                                    style={styles.cancelRecordBtn}
+                                    onPress={media.cancelRecording}
+                                >
+                                    <Ionicons
+                                        name="close-circle"
+                                        size={28}
+                                        color={colors.gray400}
+                                    />
+                                </TouchableOpacity>
+                                <View style={styles.recordingIndicator}>
+                                    <View style={styles.recordingDot} />
+                                    <Text style={styles.recordingTimer}>
+                                        {media.recordingLabel}
+                                    </Text>
+                                </View>
+                                <TouchableOpacity
+                                    onPress={media.stopAndSendRecording}
+                                    style={[styles.sendButton, styles.sendActive]}
+                                >
+                                    <Text style={[styles.sendIcon, styles.sendIconActive]}>↑</Text>
+                                </TouchableOpacity>
+                            </>
                         ) : (
-                            <TouchableOpacity
-                                style={[styles.sendButton, styles.sendInactive]}
-                                onPress={startRecording}
-                            >
-                                <Ionicons name="mic-outline" size={20} color={colors.gray400} />
-                            </TouchableOpacity>
+                            <>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.attachBtn,
+                                        media.isSendingMedia && styles.attachBtnDisabled,
+                                    ]}
+                                    onPress={() => media.setShowAttachmentSheet(true)}
+                                    disabled={media.isSendingMedia}
+                                >
+                                    <Ionicons
+                                        name="attach-outline"
+                                        size={24}
+                                        color={
+                                            media.isSendingMedia ? colors.gray300 : colors.gray400
+                                        }
+                                    />
+                                </TouchableOpacity>
+                                <TextInput
+                                    ref={inputRef}
+                                    value={msg.text}
+                                    onChangeText={msg.handleTextChange}
+                                    placeholder="Message..."
+                                    style={styles.textInput}
+                                    placeholderTextColor={colors.gray400}
+                                    multiline
+                                    maxLength={5000}
+                                />
+                                {canSend ? (
+                                    <TouchableOpacity
+                                        onPress={msg.handleSend}
+                                        style={[styles.sendButton, styles.sendActive]}
+                                    >
+                                        <Text style={[styles.sendIcon, styles.sendIconActive]}>
+                                            ↑
+                                        </Text>
+                                    </TouchableOpacity>
+                                ) : (
+                                    <TouchableOpacity
+                                        style={[styles.sendButton, styles.sendInactive]}
+                                        onPress={media.startRecording}
+                                    >
+                                        <Ionicons
+                                            name="mic-outline"
+                                            size={20}
+                                            color={colors.gray400}
+                                        />
+                                    </TouchableOpacity>
+                                )}
+                            </>
                         )}
-                    </>
-                )}
-            </View>
+                    </View>
+                </>
+            )}
             {selectedMessage && (
                 <MessageActionMenu
                     message={selectedMessage}
@@ -1767,7 +902,7 @@ export function ChatScreen({ navigation, route }: Props) {
                         setSelectedMessage(null);
                     }}
                     onReact={(emoji) => {
-                        handleReact(emoji, selectedMessage.id);
+                        msg.handleReact(emoji, selectedMessage.id);
                         setShowActionMenu(false);
                         setSelectedMessage(null);
                     }}
@@ -1776,18 +911,36 @@ export function ChatScreen({ navigation, route }: Props) {
                         setShowEmojiPicker(true);
                     }}
                     onReply={() => {
-                        setReplyingTo(selectedMessage);
+                        msg.setReplyingTo(selectedMessage);
                         setShowActionMenu(false);
                         setTimeout(() => inputRef.current?.focus(), 50);
                         setSelectedMessage(null);
                     }}
-                    onCopy={handleCopy}
+                    onCopy={() => {
+                        msg.handleCopy(selectedMessage);
+                        setShowActionMenu(false);
+                        setSelectedMessage(null);
+                    }}
                     onForward={() => {
                         setShowForwardModal(true);
                     }}
-                    onEdit={handleEditStart}
-                    onDeleteForMe={handleDeleteForMe}
-                    onDeleteForEveryone={handleDeleteForEveryone}
+                    onEdit={() => {
+                        msg.setEditingMessage(selectedMessage);
+                        msg.setText(selectedMessage.content ?? '');
+                        setShowActionMenu(false);
+                        setSelectedMessage(null);
+                        msg.setReplyingTo(null);
+                    }}
+                    onDeleteForMe={() => {
+                        msg.handleDeleteForMe(selectedMessage);
+                        setShowActionMenu(false);
+                        setSelectedMessage(null);
+                    }}
+                    onDeleteForEveryone={() => {
+                        msg.handleDeleteForEveryone(selectedMessage);
+                        setShowActionMenu(false);
+                        setSelectedMessage(null);
+                    }}
                     onDetails={() => {
                         setShowActionMenu(false);
                         setDetailsMessage(selectedMessage);
@@ -1795,7 +948,6 @@ export function ChatScreen({ navigation, route }: Props) {
                     }}
                 />
             )}
-            {/* Message Details bottom sheet */}
             {detailsMessage &&
                 (() => {
                     const dm = detailsMessage;
@@ -1881,7 +1033,7 @@ export function ChatScreen({ navigation, route }: Props) {
                     null
                 }
                 onReact={(emoji) => {
-                    handleReact(emoji, selectedMessage!.id);
+                    msg.handleReact(emoji, selectedMessage!.id);
                     setShowEmojiPicker(false);
                     setSelectedMessage(null);
                 }}
@@ -1894,34 +1046,39 @@ export function ChatScreen({ navigation, route }: Props) {
                 visible={showForwardModal}
                 message={selectedMessage}
                 onClose={() => setShowForwardModal(false)}
-                onForward={handleForward}
+                onForward={(convId) => {
+                    msg.handleForward(convId, selectedMessage);
+                    setShowForwardModal(false);
+                    setSelectedMessage(null);
+                }}
                 excludeConversationId={conversationId}
             />
             <AttachmentSheet
-                visible={showAttachmentSheet}
-                onClose={() => setShowAttachmentSheet(false)}
-                onGallery={() => handlePickImage('gallery')}
-                onCamera={() => handlePickImage('camera')}
-                onFile={handlePickFile}
+                visible={media.showAttachmentSheet}
+                onClose={() => media.setShowAttachmentSheet(false)}
+                onGallery={() => media.handlePickImage('gallery')}
+                onCamera={() => media.handlePickImage('camera')}
+                onFile={media.handlePickFile}
             />
             <ImagePreviewScreen
-                visible={previewImageUri !== null}
-                uri={previewImageUri}
-                onSend={handleSendImage}
-                onCancel={() => setPreviewImageUri(null)}
-                isSending={isSendingMedia}
+                visible={media.previewImageUri !== null}
+                uri={media.previewImageUri}
+                onSend={media.handleSendImage}
+                onCancel={() => media.setPreviewImageUri(null)}
+                isSending={media.isSendingMedia || media.isCompressing}
+                sendLabel={media.isCompressing ? 'Compressing...' : undefined}
             />
             <ImageViewerModal
-                visible={viewingImageUrl !== null}
-                imageUrl={viewingImageUrl}
+                visible={media.viewingImageUrl !== null}
+                imageUrl={media.viewingImageUrl}
                 onClose={() => {
-                    setViewingImageUrl(null);
-                    setViewingImageMeta(null);
+                    media.setViewingImageUrl(null);
+                    media.setViewingImageMeta(null);
                 }}
-                senderName={viewingImageMeta?.name}
-                senderAvatarUrl={viewingImageMeta?.avatarUrl}
-                senderColor={viewingImageMeta?.color}
-                sentAt={viewingImageMeta?.sentAt}
+                senderName={media.viewingImageMeta?.name}
+                senderAvatarUrl={media.viewingImageMeta?.avatarUrl}
+                senderColor={media.viewingImageMeta?.color}
+                sentAt={media.viewingImageMeta?.sentAt}
             />
         </KeyboardAvoidingView>
     );
@@ -1949,11 +1106,7 @@ function makeStyles(colors: ThemeColors) {
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: colors.gray100,
         },
-        scrollToBottomIcon: {
-            fontSize: 18,
-            color: colors.gray400,
-            lineHeight: 22,
-        },
+        scrollToBottomIcon: { fontSize: 18, color: colors.gray400, lineHeight: 22 },
         headerRow: { flexDirection: 'row', alignItems: 'center' },
         headerInfo: { marginLeft: 8 },
         headerName: { fontSize: 16, fontWeight: '600', color: colors.dark },
@@ -1991,12 +1144,7 @@ function makeStyles(colors: ThemeColors) {
         metaText: { fontSize: 10 },
         metaMe: { color: 'rgba(255,255,255,0.6)' },
         metaOther: { color: colors.gray400 },
-        // Image bubble — no background container
-        imageBubble: {
-            maxWidth: 240,
-            borderRadius: 18,
-            overflow: 'hidden',
-        },
+        imageBubble: { maxWidth: 240, borderRadius: 18, overflow: 'hidden' },
         imageTimeOverlay: {
             position: 'absolute',
             bottom: 6,
@@ -2012,7 +1160,6 @@ function makeStyles(colors: ThemeColors) {
         bubbleFailed: { opacity: 0.7 },
         sendingText: { fontSize: 10, color: colors.gray400, marginTop: 2, alignSelf: 'flex-end' },
         failedText: { fontSize: 11, color: colors.red, marginTop: 2, alignSelf: 'flex-end' },
-        // Messenger status row
         statusRow: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -2023,7 +1170,6 @@ function makeStyles(colors: ThemeColors) {
         },
         statusDate: { fontSize: 10, color: colors.gray400, marginRight: 2 },
         statusLabel: { fontSize: 11, color: colors.gray400 },
-        // Details bottom sheet
         detailsSheet: {
             backgroundColor: colors.white,
             borderTopLeftRadius: 20,
@@ -2104,20 +1250,6 @@ function makeStyles(colors: ThemeColors) {
             marginBottom: 1,
         },
         replyBubbleContent: { fontSize: 11, color: colors.gray500 },
-        replyContainer: {
-            marginHorizontal: 8,
-            marginBottom: 2,
-            paddingHorizontal: 12,
-            paddingVertical: 4,
-            borderRadius: 8,
-            borderLeftWidth: 2,
-        },
-        replyContainerMe: {
-            backgroundColor: 'rgba(0,132,255,0.1)',
-            borderLeftColor: colors.primary,
-        },
-        replyContainerOther: { backgroundColor: colors.gray50, borderLeftColor: colors.gray300 },
-        replyText: { fontSize: 12, color: colors.gray500 },
         editingBar: {
             flexDirection: 'row',
             justifyContent: 'space-between',
@@ -2189,7 +1321,6 @@ function makeStyles(colors: ThemeColors) {
         recordingIndicator: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
         recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#e53935' },
         recordingTimer: { fontSize: 16, color: colors.dark, fontWeight: '500', minWidth: 40 },
-        recordingHint: { fontSize: 13, color: colors.gray400 },
         imageThumbnail: { width: 220, height: 220 },
         uploadOverlay: {
             position: 'absolute',
@@ -2202,5 +1333,20 @@ function makeStyles(colors: ThemeColors) {
             borderBottomRightRadius: 12,
         },
         uploadBar: { height: 4, backgroundColor: colors.primary, borderBottomLeftRadius: 12 },
+        replyContainer: {
+            marginHorizontal: 8,
+            marginBottom: 2,
+            paddingHorizontal: 12,
+            paddingVertical: 4,
+            borderRadius: 8,
+            borderLeftWidth: 2,
+        },
+        replyContainerMe: {
+            backgroundColor: 'rgba(0,132,255,0.1)',
+            borderLeftColor: colors.primary,
+        },
+        replyContainerOther: { backgroundColor: colors.gray50, borderLeftColor: colors.gray300 },
+        replyText: { fontSize: 12, color: colors.gray500 },
+        recordingHint: { fontSize: 13, color: colors.gray400 },
     });
 }

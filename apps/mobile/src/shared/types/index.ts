@@ -88,6 +88,34 @@ export interface LinkPreview {
   image: string | null;
 }
 
+export interface SearchResult {
+  messageId: string;
+  conversationId: string;
+  conversationName: string;
+  conversationAvatar: string | null;
+  content: string;
+  highlight: string;
+  createdAt: number;
+}
+
+export interface MediaItem {
+  id: string;
+  conversationId: string;
+  type: 'image' | 'voice' | 'file';
+  mediaUrl: string;
+  mediaName: string | null;
+  mediaSize: number | null;
+  mediaDuration: number | null;
+  createdAt: number;
+  senderId: string;
+}
+
+export interface Draft {
+  conversationId: string;
+  text: string;
+  updatedAt: number;
+}
+
 export interface AuthResponse {
   user: User;
   accessToken: string;
@@ -103,6 +131,11 @@ export type RootStackParamList = {
     relationshipType?: 'friend' | 'lover';
     contactId?: string;
     nickname?: string;
+    highlightMessageId?: string;
+  };
+  MediaGallery: {
+    conversationId: string;
+    conversationName?: string;
   };
   Settings: undefined;
   ContactProfile: {
