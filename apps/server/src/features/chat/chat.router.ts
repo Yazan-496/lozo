@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../shared/middleware/auth';
 import { AppError } from '../../shared/middleware/error-handler';
+import { getIo, getOnlineUsers } from './chat.socket';
 import {
   getOrCreateConversation,
   getConversations,
@@ -13,6 +14,8 @@ import {
   removeReaction,
   markDelivered,
   markRead,
+  deleteConversationForMe,
+  deleteConversationForEveryone,
 } from './chat.service';
 
 const router = Router();
@@ -76,6 +79,16 @@ router.post('/conversations/:conversationId/messages', async (req, res, next) =>
       replyToId,
       forwardedFromId,
     });
+
+    // Notify recipient in real-time (same as socket message:send handler)
+    const io = getIo();
+    const recipientSocketId = getOnlineUsers().get(result.recipientId);
+    if (io && recipientSocketId) {
+      io.to(recipientSocketId).emit('message:new', {
+        message: result.message,
+        conversationId: req.params.conversationId,
+      });
+    }
 
     res.status(201).json(result.message);
   } catch (err) {
@@ -156,6 +169,38 @@ router.post('/conversations/:conversationId/read', async (req, res, next) => {
   try {
     const result = await markRead(req.params.conversationId, req.user!.userId);
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete conversation for me or everyone
+router.delete('/conversations/:conversationId', async (req, res, next) => {
+  try {
+    const { scope } = req.query;
+    if (scope !== 'me' && scope !== 'everyone') {
+      throw new AppError(400, 'scope must be "me" or "everyone"');
+    }
+
+    if (scope === 'me') {
+      const result = await deleteConversationForMe(req.params.conversationId, req.user!.userId);
+      res.json(result);
+    } else {
+      const result = await deleteConversationForEveryone(req.params.conversationId, req.user!.userId);
+      // Emit socket event to both participants
+      const io = getIo();
+      if (io) {
+        result.participantIds.forEach((participantId: string) => {
+          const socketId = getOnlineUsers().get(participantId);
+          if (socketId) {
+            io.to(socketId).emit('conversation:deleted', {
+              conversationId: req.params.conversationId,
+            });
+          }
+        });
+      }
+      res.json(result);
+    }
   } catch (err) {
     next(err);
   }

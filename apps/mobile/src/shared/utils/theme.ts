@@ -1,4 +1,4 @@
-export const colors = {
+export const lightColors = {
   primary: '#0084FF',
   primaryDark: '#0077E6',
   white: '#FFFFFF',
@@ -20,3 +20,31 @@ export const colors = {
   red: '#F44336',
   border: '#E4E6EB',
 };
+
+export const darkColors = {
+  primary: '#0084FF',
+  primaryDark: '#0077E6',
+  white: '#18191A',
+  black: '#E4E6EB',
+  dark: '#E4E6EB',
+  bg: '#18191A',
+  bgSecondary: '#242526',
+  gray50: '#242526',
+  gray100: '#3A3B3C',
+  gray200: '#3E4042',
+  gray300: '#4E4F50',
+  gray400: '#B0B3B8',
+  gray500: '#D8DADF',
+  gray600: '#E4E6EB',
+  gray700: '#F0F2F5',
+  gray800: '#F0F2F5',
+  gray900: '#F5F6F7',
+  green: '#4CAF50',
+  red: '#F44336',
+  border: '#3E4042',
+};
+
+export type ThemeColors = typeof lightColors;
+
+// Static default for legacy imports — screens should use useThemeColors() instead
+export const colors = lightColors;

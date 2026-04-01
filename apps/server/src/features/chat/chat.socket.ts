@@ -20,7 +20,14 @@ export function getOnlineUsers() {
   return onlineUsers;
 }
 
+let _io: Server | null = null;
+
+export function getIo(): Server | null {
+  return _io;
+}
+
 export function setupChatSocket(io: Server) {
+  _io = io;
   // Auth middleware for Socket.IO
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
@@ -47,6 +54,19 @@ export function setupChatSocket(io: Server) {
       .set({ isOnline: true, lastSeenAt: new Date() })
       .where(eq(users.id, userId));
 
+    // Cache sender's public profile so we can include it in message:new
+    const [senderProfile] = await db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        avatarUrl: users.avatarUrl,
+        avatarColor: users.avatarColor,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    socket.data.profile = senderProfile;
+
     // Broadcast online status to all connected users
     socket.broadcast.emit('user:online', { userId });
 
@@ -72,10 +92,12 @@ export function setupChatSocket(io: Server) {
           io.to(recipientSocketId).emit('message:new', {
             message: result.message,
             conversationId: data.conversationId,
+            sender: socket.data.profile ?? null,
           });
         }
 
-        callback?.({ success: true, message: result.message });
+        // Echo back localId for client reconciliation
+        callback?.({ success: true, message: { ...result.message, localId: data.localId } });
       } catch (err: any) {
         callback?.({ success: false, error: err.message });
       }

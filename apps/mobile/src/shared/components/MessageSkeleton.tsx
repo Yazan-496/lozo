@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Shimmer } from './Shimmer';
-import { colors } from '../utils/theme';
+import { lightColors as colors } from '../utils/theme';
 
 export function MessageSkeleton() {
-  const messages = [
+  const messages: { side: 'left' | 'right'; width: number | string }[] = [
     { side: 'left', width: '70%' },
     { side: 'right', width: '60%' },
     { side: 'left', width: '80%' },
@@ -26,7 +26,7 @@ export function MessageSkeleton() {
             <View
               style={[
                 styles.skeletonBox,
-                { width: msg.width },
+                { width: msg.width as any },
               ]}
             />
           </View>

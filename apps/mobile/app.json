@@ -21,13 +21,27 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow LoZo to access your photos to send images.",
+          "cameraPermission": "Allow LoZo to use your camera to take photos."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow LoZo to access your microphone to send voice messages."
+        }
+      ]
     ]
   }
 }

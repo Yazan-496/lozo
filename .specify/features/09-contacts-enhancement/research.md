@@ -1,0 +1,90 @@
+# Research: Contacts Enhancement
+
+**Feature**: 09 — Contacts Enhancement
+**Date**: 2026-03-26
+
+---
+
+## Decision 1: One-Sided Block Architecture
+
+**Decision**: Add a separate `blockedUsers` table. Do NOT delete the contact record when blocking.
+
+**Rationale**: The user chose one-sided blocking (blocked person still sees the contact). The existing `contacts` table uses a single shared record per user pair. To achieve asymmetric visibility (blocker doesn't see blocked; blocked still sees blocker) without breaking the unique-pair constraint, we store blocks in a separate table and filter them out of the blocker's contacts query at read time.
+
+**Alternatives considered**:
+- Mutate `status = 'blocked'` on the contact record → both sides lose the contact (the current behavior, rejected)
+- Two directional records per pair (remove unique index) → large migration, changes core architecture
+- `blockedByRequester` / `blockedByAddressee` booleans on contacts → works but pollutes the contacts table with block state; harder to query efficiently
+
+**Implementation**:
+- New table: `blockedUsers { id, blockerId, blockedId, createdAt }` with unique index on `(blockerId, blockedId)`
+- `blockUser` service: insert into `blockedUsers`, leave contact record as 'accepted'
+- `getContacts` for blocker: exclude users where `blockedUsers.blockerId = currentUser AND blockedUsers.blockedId = otherUser`
+- `sendMessage` / `sendRequest`: reject if `blockedUsers.blockerId = recipient AND blockedUsers.blockedId = sender`
+
+---
+
+## Decision 2: myNickname Storage
+
+**Decision**: Add `myNickname varchar(100)` column to the existing `contacts` table.
+
+**Rationale**: `myNickname` is a per-relationship attribute (what I want to be called by this one contact), just like `nickname`. Storing it on the same row keeps the relationship data co-located and avoids a join.
+
+**Alternatives considered**:
+- Separate `nicknames` table → unnecessary join for a simple column
+- Store on the `users` table → wrong; nicknames are per-relationship, not global
+
+---
+
+## Decision 3: Relationship Type Storage
+
+**Decision**: Add `relationshipType varchar(10)` (values: 'friend' | 'lover', default 'friend') to the `contacts` table. Use varchar instead of a new enum to keep the migration simple — validated at the application layer.
+
+**Rationale**: Only two values. Adding a new Postgres enum requires a separate `ALTER TYPE` migration step. A varchar with application-layer validation is simpler and equally safe for two values.
+
+**Alternatives considered**:
+- New pgEnum → extra migration step, overkill for two values
+- Bitmask / separate join table → over-engineered
+
+---
+
+## Decision 4: Conversation-Level Delete
+
+**Decision**: Add two new service functions and routes on top of the existing per-message delete infrastructure.
+
+- `DELETE /chat/conversations/:conversationId?scope=me` — marks all messages in the conversation as deleted-for-me (inserts into `messageDeletes` for every message), hides the conversation from the caller's list
+- `DELETE /chat/conversations/:conversationId?scope=everyone` — sets `deletedForEveryone = true` on all messages in the conversation, accessible to either participant
+
+**Rationale**: The existing `messageDeletes` table and `deletedForEveryone` field on messages already support per-message deletion. Conversation-level delete just applies the same logic in bulk. No new schema needed.
+
+**Alternatives considered**:
+- New `conversationDeletes` table — unnecessary; the per-message mechanism is sufficient
+- Soft-delete column on `conversations` — only works for one party; doesn't support scoped delete
+
+---
+
+## Decision 5: ContactProfileScreen Navigation
+
+**Decision**: Add `ContactProfile` as a screen in the `MainStack` navigator (alongside `Chat` and `Settings`). Pass `contactId` (the contact record ID) and `otherUser` (the full user object) as route params.
+
+**Rationale**: Contact profile is a modal-style push screen, not a tab. `MainStack` is the right place. Passing the full `otherUser` object from the contacts list avoids an extra API call just to render the profile.
+
+**API call for edits**: The profile screen calls PATCH-style endpoints for nickname, myNickname, and relationship type changes.
+
+---
+
+## Decision 6: Remove Contact (Unfriend)
+
+**Decision**: Add `DELETE /contacts/:contactId` endpoint. The service deletes the contact record entirely. Both users lose the contact (symmetric removal — same as current reject behavior). Conversation is NOT deleted.
+
+**Rationale**: Unfriend is symmetric by nature. The spec (FR-13) confirms both sides lose the contact but the chat remains. Conversation removal is a separate action.
+
+---
+
+## Decision 7: Drizzle Migration
+
+**Decision**: Generate a new Drizzle migration file adding `my_nickname`, `relationship_type` columns to `contacts`, and creating the `blocked_users` table.
+
+**File**: `apps/server/src/shared/db/migrations/XXXXXX_contacts_enhancement.sql` (auto-generated by drizzle-kit)
+
+The migration is non-destructive (all additions, no removals).

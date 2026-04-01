@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useRef, useState, useEffect } from 'react';
-import { View, Text, Animated, PanResponder, StyleSheet, SafeAreaView } from 'react-native';
-import { colors } from '../utils/theme';
+import { View, Text, Animated, PanResponder, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { lightColors as colors } from '../utils/theme';
 
 export type ToastType = 'error' | 'success' | 'info';
 
@@ -28,6 +29,7 @@ export const useToast = () => {
 export const toastRef = React.createRef<{ showToast: (type: ToastType, message: string) => void }>();
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, type: 'info', message: '', id: 0 });
   const translateY = useRef(new Animated.Value(-100)).current;
   const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,11 +111,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           ]}
           {...panResponder.panHandlers}
         >
-          <SafeAreaView style={styles.safeArea}>
+          <View style={[styles.safeArea, { paddingTop: insets.top || 12 }]}>
             <View style={[styles.toast, { backgroundColor: getBackgroundColor() }]}>
               <Text style={styles.message}>{toast.message}</Text>
             </View>
-          </SafeAreaView>
+          </View>
         </Animated.View>
       )}
     </ToastContext.Provider>
@@ -130,7 +132,7 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
   },
   toast: {
     paddingHorizontal: 16,

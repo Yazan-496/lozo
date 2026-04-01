@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { TextInput, View, Text, StyleSheet } from 'react-native';
-import { colors } from '../utils/theme';
+import { useThemeColors } from '../hooks/useThemeColors';
+import type { ThemeColors } from '../utils/theme';
 
 interface InputProps {
   value: string;
@@ -22,6 +24,9 @@ export function Input({
   error,
   multiline,
 }: InputProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <View style={styles.container}>
       {label && <Text style={styles.label}>{label}</Text>}
@@ -40,34 +45,27 @@ export function Input({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: 16,
-  },
-  label: {
-    color: colors.gray500,
-    fontSize: 13,
-    marginBottom: 6,
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  input: {
-    backgroundColor: colors.gray50,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    fontSize: 16,
-    color: colors.dark,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  inputError: {
-    borderColor: colors.red,
-  },
-  error: {
-    color: colors.red,
-    fontSize: 12,
-    marginTop: 4,
-    marginLeft: 4,
-  },
-});
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { marginBottom: 16 },
+    label: {
+      color: colors.gray500,
+      fontSize: 13,
+      marginBottom: 6,
+      marginLeft: 4,
+      fontWeight: '500',
+    },
+    input: {
+      backgroundColor: colors.gray50,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderRadius: 12,
+      fontSize: 16,
+      color: colors.dark,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    inputError: { borderColor: colors.red },
+    error: { color: colors.red, fontSize: 12, marginTop: 4, marginLeft: 4 },
+  });
+}

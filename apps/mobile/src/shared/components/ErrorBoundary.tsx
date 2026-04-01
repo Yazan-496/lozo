@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../utils/theme';
+import { lightColors as colors } from '../utils/theme';
 
 interface Props {
   children: React.ReactNode;

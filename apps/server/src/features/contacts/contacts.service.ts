@@ -1,6 +1,6 @@
 import { eq, and, or, like, ne } from 'drizzle-orm';
 import { db } from '../../shared/db';
-import { users, contacts } from '../../shared/db/schema';
+import { users, contacts, blockedUsers } from '../../shared/db/schema';
 import { AppError } from '../../shared/middleware/error-handler';
 
 const publicUserFields = {
@@ -27,6 +27,22 @@ export async function sendRequest(requesterId: string, addresseeId: string) {
 
   if (!addressee) {
     throw new AppError(404, 'User not found');
+  }
+
+  // Check if requester is blocked by addressee
+  const block = await db
+    .select()
+    .from(blockedUsers)
+    .where(
+      and(
+        eq(blockedUsers.blockerId, addresseeId),
+        eq(blockedUsers.blockedId, requesterId),
+      ),
+    )
+    .limit(1);
+
+  if (block.length > 0) {
+    throw new AppError(403, 'Cannot send request to this user');
   }
 
   // Check if a relationship already exists (in either direction)
@@ -117,21 +133,23 @@ export async function blockUser(blockerId: string, blockedId: string) {
     throw new AppError(400, 'Cannot block yourself');
   }
 
-  await db
-    .delete(contacts)
+  // Idempotent: if already blocked, just return success
+  const existing = await db
+    .select()
+    .from(blockedUsers)
     .where(
-      or(
-        and(eq(contacts.requesterId, blockerId), eq(contacts.addresseeId, blockedId)),
-        and(eq(contacts.requesterId, blockedId), eq(contacts.addresseeId, blockerId)),
+      and(
+        eq(blockedUsers.blockerId, blockerId),
+        eq(blockedUsers.blockedId, blockedId),
       ),
-    );
+    )
+    .limit(1);
 
-  const [contact] = await db
-    .insert(contacts)
-    .values({ requesterId: blockerId, addresseeId: blockedId, status: 'blocked' })
-    .returning();
+  if (existing.length === 0) {
+    await db.insert(blockedUsers).values({ blockerId, blockedId });
+  }
 
-  return contact;
+  return { success: true };
 }
 
 export async function getContacts(userId: string) {
@@ -148,15 +166,36 @@ export async function getContacts(userId: string) {
   const result = await Promise.all(
     rows.map(async (row) => {
       const otherUserId = row.requesterId === userId ? row.addresseeId : row.requesterId;
+
+      // Check if user has blocked this contact
+      const isBlocked = await db
+        .select()
+        .from(blockedUsers)
+        .where(
+          and(
+            eq(blockedUsers.blockerId, userId),
+            eq(blockedUsers.blockedId, otherUserId),
+          ),
+        )
+        .limit(1);
+
+      if (isBlocked.length > 0) {
+        return null;
+      }
+
       const [otherUser] = await db
         .select(publicUserFields)
         .from(users)
         .where(eq(users.id, otherUserId))
         .limit(1);
 
+      // nickname col = what requester calls addressee; myNickname col = what addressee calls requester
+      const isRequester = row.requesterId === userId;
       return {
         contactId: row.id,
-        nickname: row.nickname,
+        nickname: isRequester ? row.nickname : row.myNickname,
+        myNickname: isRequester ? row.myNickname : row.nickname,
+        relationshipType: row.relationshipType,
         isMuted: row.isMuted,
         user: otherUser,
         since: row.updatedAt,
@@ -164,7 +203,7 @@ export async function getContacts(userId: string) {
     }),
   );
 
-  return result;
+  return result.filter((r) => r !== null);
 }
 
 export async function getPendingRequests(userId: string) {
@@ -220,9 +259,11 @@ export async function setNickname(contactId: string, userId: string, nickname: s
     throw new AppError(400, 'Can only set nickname for accepted contacts');
   }
 
+  // Requester stores their nickname in `nickname` col; addressee stores theirs in `myNickname` col
+  const isRequester = contact.requesterId === userId;
   const [updated] = await db
     .update(contacts)
-    .set({ nickname, updatedAt: new Date() })
+    .set({ ...(isRequester ? { nickname } : { myNickname: nickname }), updatedAt: new Date() })
     .where(eq(contacts.id, contactId))
     .returning();
 
@@ -251,4 +292,148 @@ export async function toggleMute(contactId: string, userId: string) {
     .returning();
 
   return updated;
+}
+
+export async function setMyNickname(
+  contactId: string,
+  userId: string,
+  myNickname: string | null,
+) {
+  const [contact] = await db
+    .select()
+    .from(contacts)
+    .where(eq(contacts.id, contactId))
+    .limit(1);
+
+  if (!contact) {
+    throw new AppError(404, 'Contact not found');
+  }
+
+  if (contact.requesterId !== userId && contact.addresseeId !== userId) {
+    throw new AppError(403, 'Not authorized');
+  }
+
+  if (contact.status !== 'accepted') {
+    throw new AppError(400, 'Can only set my nickname for accepted contacts');
+  }
+
+  // Requester's own alias is in `myNickname` col; addressee's own alias is in `nickname` col
+  const isRequester = contact.requesterId === userId;
+  const [updated] = await db
+    .update(contacts)
+    .set({ ...(isRequester ? { myNickname } : { nickname: myNickname }), updatedAt: new Date() })
+    .where(eq(contacts.id, contactId))
+    .returning();
+
+  return updated;
+}
+
+export async function setRelationshipType(
+  contactId: string,
+  userId: string,
+  relationshipType: string,
+) {
+  if (!['friend', 'lover'].includes(relationshipType)) {
+    throw new AppError(400, 'relationshipType must be "friend" or "lover"');
+  }
+
+  const [contact] = await db
+    .select()
+    .from(contacts)
+    .where(eq(contacts.id, contactId))
+    .limit(1);
+
+  if (!contact) {
+    throw new AppError(404, 'Contact not found');
+  }
+
+  if (contact.requesterId !== userId && contact.addresseeId !== userId) {
+    throw new AppError(403, 'Not authorized');
+  }
+
+  if (contact.status !== 'accepted') {
+    throw new AppError(400, 'Can only set relationship type for accepted contacts');
+  }
+
+  const [updated] = await db
+    .update(contacts)
+    .set({ relationshipType: relationshipType as 'friend' | 'lover', updatedAt: new Date() })
+    .where(eq(contacts.id, contactId))
+    .returning();
+
+  return updated;
+}
+
+export async function getBlockedUsers(userId: string) {
+  const rows = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      displayName: users.displayName,
+      avatarUrl: users.avatarUrl,
+      avatarColor: users.avatarColor,
+      bio: users.bio,
+      isOnline: users.isOnline,
+      lastSeenAt: users.lastSeenAt,
+    })
+    .from(blockedUsers)
+    .innerJoin(users, eq(users.id, blockedUsers.blockedId))
+    .where(eq(blockedUsers.blockerId, userId));
+
+  return rows;
+}
+
+export async function getBlockStatus(currentUserId: string, otherUserId: string) {
+  const [iBlocked] = await db
+    .select({ id: blockedUsers.id })
+    .from(blockedUsers)
+    .where(and(eq(blockedUsers.blockerId, currentUserId), eq(blockedUsers.blockedId, otherUserId)))
+    .limit(1);
+
+  const [theyBlocked] = await db
+    .select({ id: blockedUsers.id })
+    .from(blockedUsers)
+    .where(and(eq(blockedUsers.blockerId, otherUserId), eq(blockedUsers.blockedId, currentUserId)))
+    .limit(1);
+
+  return {
+    iBlockedThem: !!iBlocked,
+    amBlockedByThem: !!theyBlocked,
+  };
+}
+
+export async function unblockUser(blockerId: string, blockedId: string) {
+  await db
+    .delete(blockedUsers)
+    .where(
+      and(
+        eq(blockedUsers.blockerId, blockerId),
+        eq(blockedUsers.blockedId, blockedId),
+      ),
+    );
+  return { success: true };
+}
+
+export async function removeContact(contactId: string, userId: string) {
+  const [contact] = await db
+    .select()
+    .from(contacts)
+    .where(eq(contacts.id, contactId))
+    .limit(1);
+
+  if (!contact) {
+    throw new AppError(404, 'Contact not found');
+  }
+
+  if (contact.requesterId !== userId && contact.addresseeId !== userId) {
+    throw new AppError(403, 'Not authorized');
+  }
+
+  if (contact.status !== 'accepted') {
+    throw new AppError(400, 'Can only remove accepted contacts');
+  }
+
+  await db.delete(contacts).where(eq(contacts.id, contactId));
+
+  return { success: true };
 }

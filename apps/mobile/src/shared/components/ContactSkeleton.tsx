@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Shimmer } from './Shimmer';
-import { colors } from '../utils/theme';
+import { lightColors as colors } from '../utils/theme';
 
 export function ContactSkeleton() {
   const rows = Array(8).fill(0);

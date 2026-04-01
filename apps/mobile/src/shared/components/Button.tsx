@@ -1,5 +1,5 @@
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { colors } from '../utils/theme';
+import { useThemeColors } from '../hooks/useThemeColors';
 
 interface ButtonProps {
   title: string;
@@ -18,14 +18,16 @@ export function Button({
   disabled = false,
   size = 'large',
 }: ButtonProps) {
+  const colors = useThemeColors();
+
   const bgColor = {
     primary: colors.primary,
-    secondary: colors.gray50,
+    secondary: colors.gray100,
     ghost: 'transparent',
   }[variant];
 
   const textColor = {
-    primary: colors.white,
+    primary: '#FFFFFF',
     secondary: colors.dark,
     ghost: colors.primary,
   }[variant];
@@ -36,11 +38,7 @@ export function Button({
     <TouchableOpacity
       style={[
         styles.button,
-        {
-          backgroundColor: bgColor,
-          paddingVertical,
-          opacity: disabled || loading ? 0.5 : 1,
-        },
+        { backgroundColor: bgColor, paddingVertical, opacity: disabled || loading ? 0.5 : 1 },
       ]}
       onPress={onPress}
       disabled={disabled || loading}

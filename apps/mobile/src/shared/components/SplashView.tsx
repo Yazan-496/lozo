@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Animated, StyleSheet } from 'react-native';
-import { colors } from '../utils/theme';
+import { lightColors as colors } from '../utils/theme';
 
 interface SplashViewProps {
   onHide: () => void;

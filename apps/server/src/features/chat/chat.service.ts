@@ -1,4 +1,4 @@
-import { eq, and, or, desc, lt, ne, notInArray } from 'drizzle-orm';
+import { eq, and, or, desc, lt, ne, notInArray, inArray } from 'drizzle-orm';
 import { db } from '../../shared/db';
 import {
   users,
@@ -8,6 +8,7 @@ import {
   messageDeletes,
   messageReactions,
   messageStatuses,
+  blockedUsers,
 } from '../../shared/db/schema';
 import { AppError } from '../../shared/middleware/error-handler';
 
@@ -121,6 +122,25 @@ export async function getConversations(userId: string) {
         .orderBy(desc(messages.createdAt))
         .limit(1);
 
+      // Get status of last message (from recipient's perspective when I sent it)
+      let lastMessageStatus: string | null = null;
+      if (lastMessage) {
+        // If I sent the last message, get the recipient's status row
+        // If they sent it, get my status row
+        const statusUserId = lastMessage.senderId === userId ? otherUserId : userId;
+        const [statusRow] = await db
+          .select({ status: messageStatuses.status })
+          .from(messageStatuses)
+          .where(
+            and(
+              eq(messageStatuses.messageId, lastMessage.id),
+              eq(messageStatuses.userId, statusUserId),
+            ),
+          )
+          .limit(1);
+        lastMessageStatus = statusRow?.status ?? null;
+      }
+
       // Count unread messages
       const unreadMessages = await db
         .select({ id: messageStatuses.id })
@@ -134,12 +154,19 @@ export async function getConversations(userId: string) {
           ),
         );
 
+      const builtLastMessage = lastMessage
+        ? {
+            ...(lastMessage.deletedForEveryone
+              ? { ...lastMessage, content: null, type: 'text' as const }
+              : lastMessage),
+            status: lastMessageStatus,
+          }
+        : null;
+
       return {
         id: conv.id,
         otherUser,
-        lastMessage: lastMessage?.deletedForEveryone
-          ? { ...lastMessage, content: null, type: 'text' as const }
-          : lastMessage || null,
+        lastMessage: builtLastMessage,
         unreadCount: unreadMessages.length,
         updatedAt: conv.updatedAt,
       };
@@ -183,6 +210,22 @@ export async function sendMessage(
     ? conv.participantTwoId
     : conv.participantOneId;
 
+  // Check if recipient has blocked the sender
+  const [blocked] = await db
+    .select()
+    .from(blockedUsers)
+    .where(
+      and(
+        eq(blockedUsers.blockerId, recipientId),
+        eq(blockedUsers.blockedId, senderId),
+      ),
+    )
+    .limit(1);
+
+  if (blocked) {
+    throw new AppError(403, 'Cannot send message to this user');
+  }
+
   const isForwarded = !!data.forwardedFromId;
 
   const [message] = await db
@@ -215,7 +258,24 @@ export async function sendMessage(
     .set({ lastMessageId: message.id, updatedAt: new Date() })
     .where(eq(conversations.id, conversationId));
 
-  return { message, recipientId };
+  // Populate replyTo so the recipient's socket message includes the preview
+  let replyTo = null;
+  if (message.replyToId) {
+    const [replyMsg] = await db
+      .select({
+        id: messages.id,
+        senderId: messages.senderId,
+        type: messages.type,
+        content: messages.content,
+        deletedForEveryone: messages.deletedForEveryone,
+      })
+      .from(messages)
+      .where(eq(messages.id, message.replyToId))
+      .limit(1);
+    replyTo = replyMsg ?? null;
+  }
+
+  return { message: { ...message, reactions: [], replyTo }, recipientId };
 }
 
 // Get messages for a conversation with pagination
@@ -537,4 +597,85 @@ export async function markRead(conversationId: string, userId: string) {
     );
 
   return { updated: msgs.length };
+}
+
+// Delete conversation for current user only (clears message history)
+export async function deleteConversationForMe(conversationId: string, userId: string) {
+  // Verify user is a participant
+  const [conv] = await db
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.id, conversationId),
+        or(
+          eq(conversations.participantOneId, userId),
+          eq(conversations.participantTwoId, userId),
+        ),
+      ),
+    )
+    .limit(1);
+
+  if (!conv) {
+    throw new AppError(403, 'Not authorized to delete this conversation');
+  }
+
+  // Get all message IDs in the conversation
+  const messageIds = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.conversationId, conversationId));
+
+  // Bulk insert into messageDeletes (idempotent)
+  if (messageIds.length > 0) {
+    await db
+      .insert(messageDeletes)
+      .values(messageIds.map((msg) => ({ messageId: msg.id, userId })))
+      .onConflictDoNothing();
+  }
+
+  return { success: true, deletedCount: messageIds.length };
+}
+
+// Delete conversation for everyone (permanent deletion)
+export async function deleteConversationForEveryone(conversationId: string, userId: string) {
+  // Verify user is a participant
+  const [conv] = await db
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.id, conversationId),
+        or(
+          eq(conversations.participantOneId, userId),
+          eq(conversations.participantTwoId, userId),
+        ),
+      ),
+    )
+    .limit(1);
+
+  if (!conv) {
+    throw new AppError(403, 'Not authorized to delete this conversation');
+  }
+
+  // Get all message IDs for FK-safe cascade
+  const msgIds = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.conversationId, conversationId));
+
+  if (msgIds.length > 0) {
+    const ids = msgIds.map((m) => m.id);
+    await db.delete(messageReactions).where(inArray(messageReactions.messageId, ids));
+    await db.delete(messageStatuses).where(inArray(messageStatuses.messageId, ids));
+    await db.delete(messageDeletes).where(inArray(messageDeletes.messageId, ids));
+    await db.delete(messages).where(inArray(messages.id, ids));
+  }
+
+  await db.delete(conversations).where(eq(conversations.id, conversationId));
+
+  return {
+    success: true,
+    participantIds: [conv.participantOneId, conv.participantTwoId],
+  };
 }
