@@ -131,7 +131,7 @@ $hasGit = Test-HasGit
 
 Set-Location $repoRoot
 
-$specsDir = Join-Path $repoRoot 'specs'
+$specsDir = Join-Path $repoRoot '.specify/features'
 New-Item -ItemType Directory -Path $specsDir -Force | Out-Null
 
 # Function to generate branch name with stop word filtering and length filtering
@@ -210,7 +210,7 @@ if ($Timestamp) {
         }
     }
 
-    $featureNum = ('{0:000}' -f $Number)
+    $featureNum = ('{0:00}' -f $Number)
     $branchName = "$featureNum-$branchSuffix"
 }
 

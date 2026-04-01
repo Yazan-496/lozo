@@ -7,5 +7,8 @@
     "mobile:android": "npm --prefix apps/mobile run android",
     "mobile:ios": "npm --prefix apps/mobile run ios",
     "server": "npm --prefix apps/server run dev"
+  },
+  "dependencies": {
+    "winston": "^3.19.0"
   }
 }
