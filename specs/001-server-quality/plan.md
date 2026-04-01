@@ -12,9 +12,9 @@ Implement production-ready server infrastructure for the LoZo backend including 
 ## Technical Context
 
 **Language/Version**: TypeScript (Node.js LTS, currently v20+)  
-**Primary Dependencies**: Express, Drizzle (ORM), Socket.IO, Winston (logging library - NEEDS CLARIFICATION)  
+**Primary Dependencies**: Express, Drizzle (ORM), Socket.IO, Winston (logging)  
 **Storage**: PostgreSQL (Supabase free tier)  
-**Testing**: NEEDS CLARIFICATION (Jest or Vitest)  
+**Testing**: Jest with supertest for HTTP endpoint testing  
 **Target Platform**: Linux server (Koyeb containerized deployment)
 **Project Type**: Web service (REST API + WebSocket server)  
 **Performance Goals**: Handle ~10 concurrent users, <500ms health check response, <5s database failure detection  
