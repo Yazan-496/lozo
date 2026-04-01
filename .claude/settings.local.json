@@ -49,7 +49,9 @@
       "Bash(git -C \"C:\\\\Users\\\\Yazan Ad\\\\Desktop\\\\External\\\\mine\\\\lozo\" checkout -b \"09-contacts-enhancement\")",
       "Bash(powershell.exe -NonInteractive -File \".specify/scripts/powershell/setup-plan.ps1\" -Json)",
       "Bash(pwsh -NoProfile -Command \".\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks\")",
-      "Bash(grep -r \"setNickname\\\\|getContacts\\\\|sendRequest\" 'C:\\\\Users\\\\Yazan Ad\\\\Desktop\\\\External\\\\mine\\\\lozo\\\\apps\\\\mobile\\\\src' --include=*.ts --include=*.tsx)"
+      "Bash(grep -r \"setNickname\\\\|getContacts\\\\|sendRequest\" 'C:\\\\Users\\\\Yazan Ad\\\\Desktop\\\\External\\\\mine\\\\lozo\\\\apps\\\\mobile\\\\src' --include=*.ts --include=*.tsx)",
+      "Bash(cp \"specs/13-message-pagination/plan.md\" \".specify/features/13-message-pagination/plan.md\")",
+      "Bash(rm -rf \"specs/\")"
     ]
   }
 }

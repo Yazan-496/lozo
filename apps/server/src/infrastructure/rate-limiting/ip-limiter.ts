@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { formatError } from '../errors/error-formatter';
 import { RateLimitError } from '../errors/error-types';
 
@@ -8,7 +8,7 @@ export const ipRateLimiter = rateLimit({
   max: Number(process.env.RATE_LIMIT_MAX_IP) || 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip ?? 'unknown',
+  keyGenerator: (req) => ipKeyGenerator(req),
   handler: (req, res) => {
     res.status(429).json(formatError(new RateLimitError('Too many requests'), req.id));
   },

@@ -1,4 +1,4 @@
-## Project: LoZo — Messenger Clone (React Native)
+﻿## Project: LoZo — Messenger Clone (React Native)
 
 ### Stack
 
