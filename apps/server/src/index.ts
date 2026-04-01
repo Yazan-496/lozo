@@ -19,9 +19,10 @@ import { ShutdownService } from './infrastructure/shutdown/shutdown.service';
 import { authRouter } from './features/auth/auth.router';
 import { contactsRouter } from './features/contacts/contacts.router';
 import { chatRouter } from './features/chat/chat.router';
+import { setupChatSocket } from './features/chat/chat.socket';
 import { usersRouter } from './features/users/users.router';
 import { uploadRouter } from './features/chat/upload.router';
-import { setupChatSocket } from './features/chat/chat.socket';
+import linkPreviewRouter from './features/link-preview/link-preview.router';
 import { initStorage } from './shared/services/supabase';
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/api/users', userRateLimiter, usersRouter);
 app.use('/api/contacts', userRateLimiter, contactsRouter);
 app.use('/api/chat', userRateLimiter, chatRouter);
 app.use('/api/upload', userRateLimiter, uploadRouter);
+app.use('/api/link-preview', userRateLimiter, linkPreviewRouter);
 
 // ── 404 catch-all (before error handler) ─────────────────────────────────────
 app.use((req, _res, next) => {

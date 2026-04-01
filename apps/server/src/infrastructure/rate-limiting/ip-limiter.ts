@@ -8,7 +8,7 @@ export const ipRateLimiter = rateLimit({
   max: Number(process.env.RATE_LIMIT_MAX_IP) || 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => ipKeyGenerator(req),
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ''),
   handler: (req, res) => {
     res.status(429).json(formatError(new RateLimitError('Too many requests'), req.id));
   },

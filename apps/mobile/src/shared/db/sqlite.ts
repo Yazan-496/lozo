@@ -43,6 +43,13 @@ const MIGRATION = `
   );
   CREATE INDEX IF NOT EXISTS idx_outbox_conversation
     ON outbox (conversation_id, created_at ASC);
+  CREATE TABLE IF NOT EXISTS url_previews (
+    url TEXT PRIMARY KEY,
+    title TEXT,
+    description TEXT,
+    image_url TEXT,
+    fetched_at TEXT NOT NULL
+  );
 `;
 
 export async function initDatabase(): Promise<void> {

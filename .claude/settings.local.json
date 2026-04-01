@@ -51,7 +51,10 @@
       "Bash(pwsh -NoProfile -Command \".\\\\.specify\\\\scripts\\\\powershell\\\\check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks\")",
       "Bash(grep -r \"setNickname\\\\|getContacts\\\\|sendRequest\" 'C:\\\\Users\\\\Yazan Ad\\\\Desktop\\\\External\\\\mine\\\\lozo\\\\apps\\\\mobile\\\\src' --include=*.ts --include=*.tsx)",
       "Bash(cp \"specs/13-message-pagination/plan.md\" \".specify/features/13-message-pagination/plan.md\")",
-      "Bash(rm -rf \"specs/\")"
+      "Bash(rm -rf \"specs/\")",
+      "Bash(for f:*)",
+      "Bash(do head:*)",
+      "Bash(done)"
     ]
   }
 }

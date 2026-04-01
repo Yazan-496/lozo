@@ -46,6 +46,7 @@ export function ContactProfileScreen({ route, navigation }: any) {
     }>({ visible: false, field: 'nickname', value: '' });
     const { showToast } = useToast();
     const onlineUserIds = usePresenceStore((s) => s.onlineUserIds);
+    const lastSeenMap = usePresenceStore((s) => s.lastSeenMap);
     const colors = useThemeColors();
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -277,10 +278,12 @@ export function ContactProfileScreen({ route, navigation }: any) {
         );
     }
 
-    const isOnline = onlineUserIds.has(otherUser.id);
-    const presenceText = isOnline ? 'Online' : getPresenceString(false, otherUser.lastSeenAt);
+    const profileUser = contact?.user ?? otherUser;
+    const isOnline = onlineUserIds.has(profileUser.id);
+    const lastSeenAt = lastSeenMap[profileUser.id] ?? profileUser.lastSeenAt;
+    const presenceText = getPresenceString(isOnline, lastSeenAt);
     // nickname = what current user calls this contact; myNickname = current user's alias for themselves
-    const displayName = contact.nickname || otherUser.displayName;
+    const displayName = contact.nickname || profileUser.displayName;
     const relationshipEmoji = relationshipType === 'friend' ? '💙' : '❤️';
 
     return (
@@ -288,14 +291,14 @@ export function ContactProfileScreen({ route, navigation }: any) {
             {/* Header Section */}
             <View style={styles.headerSection}>
                 <Avatar
-                    uri={otherUser.avatarUrl}
+                    uri={profileUser.avatarUrl}
                     name={displayName}
-                    color={otherUser.avatarColor}
+                    color={profileUser.avatarColor}
                     size={80}
                     isOnline={isOnline}
                 />
                 <Text style={styles.displayName}>{displayName}</Text>
-                <Text style={styles.username}>@{otherUser.username}</Text>
+                <Text style={styles.username}>@{profileUser.username}</Text>
                 <View style={styles.presenceRow}>
                     <View
                         style={[

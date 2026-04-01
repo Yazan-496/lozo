@@ -81,6 +81,13 @@ export interface Conversation {
   updatedAt: string;
 }
 
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+}
+
 export interface AuthResponse {
   user: User;
   accessToken: string;

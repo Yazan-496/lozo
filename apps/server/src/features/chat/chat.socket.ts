@@ -70,7 +70,11 @@ export function setupChatSocket(io: Server) {
     // Broadcast online status to all connected users
     socket.broadcast.emit('user:online', { userId });
 
-    console.log(`User connected: ${socket.data.user.username} (${socket.id})`);
+    // Send the list of already-online users to the newly connected client
+    const alreadyOnline = Array.from(onlineUsers.keys()).filter((id) => id !== userId);
+    socket.emit('presence:sync', { userIds: alreadyOnline });
+
+    console.log(`User connected: ${socket.data.user.username} (${socket.id}) | sending presence:sync with ${alreadyOnline.length} online users: [${alreadyOnline.join(', ')}]`);
 
     // Send message
     socket.on('message:send', async (data, callback) => {
