@@ -41,7 +41,8 @@
         {
           "microphonePermission": "Allow LoZo to access your microphone to send voice messages."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

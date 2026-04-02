@@ -41,6 +41,8 @@ export interface Message {
   mediaSize: number | null;
   mediaDuration: number | null;
   replyToId: string | null;
+  storyReplyId?: string | null;
+  storyThumbnailUrl?: string | null;
   forwardedFromId: string | null;
   isForwarded: boolean;
   editedAt: string | null;
@@ -116,10 +118,70 @@ export interface Draft {
   updatedAt: number;
 }
 
+export type StoryMediaType = 'photo' | 'video';
+
+export interface StoryUser {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  avatarColor: string;
+}
+
+export interface Story {
+  id: string;
+  userId: string;
+  user: StoryUser;
+  mediaUrl: string;
+  mediaType: StoryMediaType;
+  mediaDuration: number | null;
+  thumbnailUrl: string | null;
+  caption: string | null;
+  createdAt: string;
+  expiresAt: string;
+  viewCount: number;
+  isViewed: boolean;
+}
+
+export interface StoryView {
+  id: string;
+  storyId: string;
+  viewerId: string;
+  viewer: StoryUser;
+  viewedAt: string;
+}
+
+export interface UserStories {
+  user: StoryUser;
+  stories: Story[];
+  hasUnviewed: boolean;
+  latestAt: string;
+}
+
 export interface AuthResponse {
   user: User;
   accessToken: string;
   refreshToken: string;
+}
+
+// Scheduled Message Types
+export interface ScheduledMessage {
+  id: string;
+  conversationId: string;
+  content: string;
+  scheduledAt: string;  // ISO 8601 UTC
+  createdAt: string;
+  updatedAt: string;
+  status: 'pending' | 'sending' | 'sent' | 'canceled';
+}
+
+export interface ScheduledMessageRow {
+  id: string;
+  conversation_id: string;
+  content: string;
+  scheduled_at: string;
+  created_at: string;
+  updated_at: string;
+  status: string;
 }
 
 export type RootStackParamList = {
@@ -146,5 +208,10 @@ export type RootStackParamList = {
   };
   UserProfile: {
     user: User;
+  };
+  CreateStory: undefined;
+  StoryViewer: {
+    userStories: UserStories[];
+    startIndex: number;
   };
 };

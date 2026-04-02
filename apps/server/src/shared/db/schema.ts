@@ -57,6 +57,32 @@ export const conversations = pgTable('conversations', {
 ]);
 
 export const messageTypeEnum = pgEnum('message_type', ['text', 'image', 'voice', 'file']);
+export const storyMediaTypeEnum = pgEnum('story_media_type', ['photo', 'video']);
+
+export const stories = pgTable('stories', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  mediaUrl: varchar('media_url', { length: 500 }).notNull(),
+  mediaType: storyMediaTypeEnum('media_type').notNull(),
+  mediaDuration: integer('media_duration'),
+  thumbnailUrl: varchar('thumbnail_url', { length: 500 }),
+  caption: varchar('caption', { length: 200 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+}, (table) => [
+  index('idx_stories_user').on(table.userId, table.createdAt),
+  index('idx_stories_expiry').on(table.expiresAt),
+]);
+
+export const storyViews = pgTable('story_views', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  storyId: uuid('story_id').notNull().references(() => stories.id, { onDelete: 'cascade' }),
+  viewerId: uuid('viewer_id').notNull().references(() => users.id),
+  viewedAt: timestamp('viewed_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('unique_story_view').on(table.storyId, table.viewerId),
+  index('idx_story_views_story').on(table.storyId, table.viewedAt),
+]);
 
 export const messages = pgTable('messages', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -69,6 +95,8 @@ export const messages = pgTable('messages', {
   mediaSize: integer('media_size'), // bytes
   mediaDuration: integer('media_duration'), // seconds (for voice notes)
   replyToId: uuid('reply_to_id'), // references messages.id (self-ref added below)
+  storyReplyId: uuid('story_reply_id').references(() => stories.id),
+  storyThumbnailUrl: varchar('story_thumbnail_url', { length: 500 }),
   forwardedFromId: uuid('forwarded_from_id'), // original message id
   isForwarded: boolean('is_forwarded').notNull().default(false),
   editedAt: timestamp('edited_at'),

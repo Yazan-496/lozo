@@ -15,7 +15,9 @@ import { ToastProvider } from './src/shared/components/Toast';
 import { InAppNotificationProvider } from './src/shared/components/InAppNotification';
 import { initDatabase, getDb } from './src/shared/db/sqlite';
 import { pruneOldMessages } from './src/shared/db/messages.db.ts';
+import { startScheduler } from './src/shared/services/scheduler';
 import { useNetworkState } from './src/shared/hooks/useNetworkState';
+import { initStoriesDb } from './src/shared/db/stories.db.ts';
 
 export default function App() {
     const hydrate = useAuthStore((s) => s.hydrate);
@@ -36,10 +38,14 @@ export default function App() {
         const initApp = async () => {
             // Initialize SQLite database
             await initDatabase();
+            await initStoriesDb();
 
             // Get initial network state
             const netState = await Network.getNetworkStateAsync();
             useNetworkStore.getState().setOnline(!!netState.isInternetReachable);
+
+            // Start scheduler service after database is ready
+            startScheduler();
 
             // Run pruning in background after short delay
             setTimeout(() => void pruneOldMessages(), 2000);
@@ -77,16 +83,16 @@ export default function App() {
             <SafeAreaProvider>
                 <ToastProvider>
                     <InAppNotificationProvider>
-                    <GestureHandlerRootView style={{ flex: 1 }}>
-                        <StatusBar style={isDark ? 'light' : 'dark'} />
-                        {splashMounted && (
-                            <SplashView
-                                visible={splashVisible}
-                                onHide={() => setSplashMounted(false)}
-                            />
-                        )}
-                        <RootNavigation />
-                    </GestureHandlerRootView>
+                        <GestureHandlerRootView style={{ flex: 1 }}>
+                            <StatusBar style={isDark ? 'light' : 'dark'} />
+                            {splashMounted && (
+                                <SplashView
+                                    visible={splashVisible}
+                                    onHide={() => setSplashMounted(false)}
+                                />
+                            )}
+                            <RootNavigation />
+                        </GestureHandlerRootView>
                     </InAppNotificationProvider>
                 </ToastProvider>
             </SafeAreaProvider>

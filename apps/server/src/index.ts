@@ -24,22 +24,28 @@ import { usersRouter } from './features/users/users.router';
 import { uploadRouter } from './features/chat/upload.router';
 import linkPreviewRouter from './features/link-preview/link-preview.router';
 import { initStorage } from './shared/services/supabase';
+import { runMigrations } from './shared/db/migrate';
+import { storiesRouter } from './features/stories/stories.router';
+import { startStoriesCleanupJob } from './features/stories/stories.cron';
 
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: '*' },
+    cors: { origin: '*' },
 });
 
 // ── Middleware (order matters) ────────────────────────────────────────────────
-app.use(correlationIdMiddleware);   // 1. assign req.id + req.startTime
-app.use(requestLoggerMiddleware);   // 2. log every request
+app.use(correlationIdMiddleware); // 1. assign req.id + req.startTime
+app.use(requestLoggerMiddleware); // 2. log every request
 app.use(cors());
 app.use(express.json());
 
 // ── Connection tracking (for graceful shutdown) ───────────────────────────────
 const connectionTracker = new ConnectionTracker();
-app.use((req, res, next) => { connectionTracker.add(res); next(); });
+app.use((req, res, next) => {
+    connectionTracker.add(res);
+    next();
+});
 
 // ── Health checks (no rate-limiting on these) ─────────────────────────────────
 app.use('/health', healthRouter);
@@ -51,10 +57,11 @@ app.use('/api/contacts', userRateLimiter, contactsRouter);
 app.use('/api/chat', userRateLimiter, chatRouter);
 app.use('/api/upload', userRateLimiter, uploadRouter);
 app.use('/api/link-preview', userRateLimiter, linkPreviewRouter);
+app.use('/api/stories', userRateLimiter, storiesRouter);
 
 // ── 404 catch-all (before error handler) ─────────────────────────────────────
 app.use((req, _res, next) => {
-  next(new NotFoundError(`Route ${req.method} ${req.path} not found`));
+    next(new NotFoundError(`Route ${req.method} ${req.path} not found`));
 });
 
 // ── Global error handler (must be last) ──────────────────────────────────────
@@ -68,8 +75,10 @@ setIOInstance(io); // let health checks inspect Socket.IO
 const PORT = process.env.PORT || 5000;
 
 httpServer.listen(PORT, async () => {
-  await initStorage();
-  logger.info('Server started', { port: PORT, nodeEnv: process.env.NODE_ENV });
+    await runMigrations();
+    await initStorage();
+    startStoriesCleanupJob();
+    logger.info('Server started', { port: PORT, nodeEnv: process.env.NODE_ENV });
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
@@ -79,12 +88,12 @@ const onSignal = () => shutdownService.gracefulShutdown();
 process.on('SIGTERM', onSignal);
 process.on('SIGINT', onSignal);
 process.on('uncaughtException', (err) => {
-  logger.error('Uncaught exception', { message: err.message, stack: err.stack });
-  shutdownService.gracefulShutdown();
+    logger.error('Uncaught exception', { message: err.message, stack: err.stack });
+    shutdownService.gracefulShutdown();
 });
 process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled rejection', { reason });
-  shutdownService.gracefulShutdown();
+    logger.error('Unhandled rejection', { reason });
+    shutdownService.gracefulShutdown();
 });
 
 export { io };

@@ -34,6 +34,7 @@ interface UseChatMessagesOptions {
     isOnline: boolean;
     onConversationDeleted: () => void;
     initialHighlightId?: string;
+    scheduledMessages?: any[]; // Optional scheduled messages to merge
 }
 
 export function useChatMessages({
@@ -43,6 +44,7 @@ export function useChatMessages({
     isOnline,
     onConversationDeleted,
     initialHighlightId,
+    scheduledMessages = [],
 }: UseChatMessagesOptions) {
     const { showToast } = useToast();
 
@@ -729,9 +731,30 @@ export function useChatMessages({
         }, 800);
     }
 
+    // Combine regular messages with scheduled messages
+    const combinedMessages = scheduledMessages.length > 0 
+        ? (() => {
+            const scheduledItems = scheduledMessages.map(scheduled => ({
+                ...scheduled,
+                id: `scheduled-${scheduled.id}`,
+                type: 'scheduled' as const,
+                senderId: currentUser.id,
+                createdAt: scheduled.scheduledAt,
+                content: scheduled.content,
+                deletedForEveryone: false,
+                reactions: [],
+                status: 'scheduled' as const,
+            }));
+            
+            return [...messages, ...scheduledItems].sort((a, b) => 
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+        })()
+        : messages;
+
     return {
         // State
-        messages,
+        messages: combinedMessages,
         setMessages,
         text,
         setText,
