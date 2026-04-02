@@ -22,6 +22,8 @@ export async function sendMessage(
     mediaSize?: number;
     mediaDuration?: number;
     replyToId?: string;
+    storyReplyId?: string;
+    storyThumbnailUrl?: string;
     forwardedFromId?: string;
   },
 ) {
@@ -73,6 +75,8 @@ export async function sendMessage(
       mediaSize: data.mediaSize,
       mediaDuration: data.mediaDuration,
       replyToId: data.replyToId,
+      storyReplyId: data.storyReplyId,
+      storyThumbnailUrl: data.storyThumbnailUrl,
       forwardedFromId: data.forwardedFromId,
       isForwarded,
     })

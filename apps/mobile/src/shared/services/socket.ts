@@ -127,11 +127,18 @@ export function connectSocket() {
         void hideCachedConversation(data.conversationId);
     });
 
+    socket.on('story:new', (_data: any) => {});
+    socket.on('story:view_count', (_data: any) => {});
+    socket.on('story:deleted', (_data: any) => {});
+
     return socket;
 }
 
 export function disconnectSocket() {
     if (socket) {
+        socket.off('story:new');
+        socket.off('story:view_count');
+        socket.off('story:deleted');
         socket.disconnect();
         socket = null;
     }

@@ -55,6 +55,19 @@ const MIGRATION = `
     text TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS scheduled_messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    scheduled_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+  );
+  CREATE INDEX IF NOT EXISTS idx_scheduled_conversation
+    ON scheduled_messages (conversation_id, scheduled_at ASC);
+  CREATE INDEX IF NOT EXISTS idx_scheduled_due
+    ON scheduled_messages (status, scheduled_at ASC);
 `;
 
 /** Create FTS5 virtual table, triggers, and backfill existing messages (idempotent). */

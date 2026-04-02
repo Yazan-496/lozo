@@ -19,6 +19,11 @@ export const lightColors = {
   green: '#4CAF50',
   red: '#F44336',
   border: '#E4E6EB',
+  // Additional colors for scheduled messages
+  text: '#1C1E21',
+  secondaryText: '#65676B',
+  warning: '#FF9500',
+  secondaryBackground: '#F0F2F5',
 };
 
 export const darkColors = {
@@ -42,6 +47,11 @@ export const darkColors = {
   green: '#4CAF50',
   red: '#F44336',
   border: '#3E4042',
+  // Additional colors for scheduled messages
+  text: '#E4E6EB',
+  secondaryText: '#B0B3B8',
+  warning: '#FF9500',
+  secondaryBackground: '#242526',
 };
 
 export type ThemeColors = typeof lightColors;

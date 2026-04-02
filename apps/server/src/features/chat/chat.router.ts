@@ -61,7 +61,18 @@ router.get('/conversations/:conversationId/messages', async (req, res, next) => 
 // Send a message (REST fallback — primary sending is via Socket.IO)
 router.post('/conversations/:conversationId/messages', async (req, res, next) => {
   try {
-    const { type, content, mediaUrl, mediaName, mediaSize, mediaDuration, replyToId, forwardedFromId } = req.body;
+    const {
+      type,
+      content,
+      mediaUrl,
+      mediaName,
+      mediaSize,
+      mediaDuration,
+      replyToId,
+      storyReplyId,
+      storyThumbnailUrl,
+      forwardedFromId,
+    } = req.body;
 
     if (!type) {
       throw new AppError(400, 'type is required');
@@ -81,6 +92,8 @@ router.post('/conversations/:conversationId/messages', async (req, res, next) =>
       mediaSize,
       mediaDuration,
       replyToId,
+      storyReplyId,
+      storyThumbnailUrl,
       forwardedFromId,
     });
 

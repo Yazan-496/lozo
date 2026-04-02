@@ -39,9 +39,14 @@ import { ImagePreviewScreen } from './components/ImagePreviewScreen';
 import { ImageViewerModal } from './components/ImageViewerModal';
 import { VoiceMessageBubble } from './components/VoiceMessageBubble';
 import { FileBubble } from './components/FileBubble';
+import { StoryReplyBubble } from './components/StoryReplyBubble';
 import { TypingIndicator } from './components/TypingIndicator';
 import { LinkPreviewCard } from './components/LinkPreviewCard';
 import { HeaderMenu } from './components/HeaderMenu';
+import { SendButton } from './components/SendButton';
+import { SchedulePickerModal } from './scheduling/SchedulePickerModal';
+import { ScheduledMessageBubble } from './scheduling/ScheduledMessageBubble';
+import { useScheduledMessages } from './scheduling/useScheduledMessages';
 import { useChatMessages } from './hooks/useChatMessages';
 import { useChatMedia } from './hooks/useChatMedia';
 import type { Message, User, Reaction } from '../../shared/types';
@@ -118,6 +123,7 @@ export function ChatScreen({ navigation, route }: Props) {
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [expandedStatusId, setExpandedStatusId] = useState<string | null>(null);
     const [detailsMessage, setDetailsMessage] = useState<Message | null>(null);
+    const [showScheduleModal, setShowScheduleModal] = useState(false);
 
     const inputRef = useRef<TextInput>(null);
     const swipeAnimMap = useRef<Record<string, Animated.Value>>({});
@@ -135,6 +141,10 @@ export function ChatScreen({ navigation, route }: Props) {
             .catch(() => {});
     }, [conversationId]);
 
+    const scheduling = useScheduledMessages({
+        conversationId,
+    });
+
     const msg = useChatMessages({
         conversationId,
         chatUser,
@@ -142,6 +152,7 @@ export function ChatScreen({ navigation, route }: Props) {
         isOnline,
         onConversationDeleted: () => navigation.goBack(),
         initialHighlightId,
+        scheduledMessages: scheduling.scheduledMessages,
     });
 
     const media = useChatMedia({
@@ -298,8 +309,29 @@ export function ChatScreen({ navigation, route }: Props) {
         );
     }
 
-    function renderMessage({ item, index }: { item: Message; index: number }) {
+    function renderMessage({ item, index }: { item: any; index: number }) {
+        // Handle scheduled messages
+        if (item.type === 'scheduled') {
+            return (
+                <View
+                    style={[
+                        styles.messageRow,
+                        styles.messageRowEnd, // Scheduled messages are always from current user
+                    ]}
+                >
+                    <ScheduledMessageBubble 
+                        message={item}
+                        onPress={() => {
+                            // TODO: Add scheduled message menu for editing/canceling
+                        }}
+                    />
+                </View>
+            );
+        }
+        
         const isMe = item.senderId === currentUser?.id;
+        // Note: Using original messages array for prev/next logic since we can't easily
+        // access the combined data here. This is acceptable for now.
         const prevMsg = msg.messages[index - 1];
         const nextMsg = msg.messages[index + 1];
         const isBottomOfSection = !prevMsg || !isSameSection(item, prevMsg);
@@ -479,6 +511,12 @@ export function ChatScreen({ navigation, route }: Props) {
                                         </Text>
                                     </View>
                                 </TouchableOpacity>
+                            )}
+                            {!!item.storyReplyId && (
+                                <StoryReplyBubble
+                                    thumbnailUrl={item.storyThumbnailUrl ?? null}
+                                    isExpired={!item.storyThumbnailUrl}
+                                />
                             )}
 
                             {isImageMsg ? (
@@ -861,27 +899,13 @@ export function ChatScreen({ navigation, route }: Props) {
                                     multiline
                                     maxLength={5000}
                                 />
-                                {canSend ? (
-                                    <TouchableOpacity
-                                        onPress={msg.handleSend}
-                                        style={[styles.sendButton, styles.sendActive]}
-                                    >
-                                        <Text style={[styles.sendIcon, styles.sendIconActive]}>
-                                            ↑
-                                        </Text>
-                                    </TouchableOpacity>
-                                ) : (
-                                    <TouchableOpacity
-                                        style={[styles.sendButton, styles.sendInactive]}
-                                        onPress={media.startRecording}
-                                    >
-                                        <Ionicons
-                                            name="mic-outline"
-                                            size={20}
-                                            color={colors.gray400}
-                                        />
-                                    </TouchableOpacity>
-                                )}
+                                <SendButton
+                                    canSend={canSend}
+                                    onPress={msg.handleSend}
+                                    onLongPress={() => setShowScheduleModal(true)}
+                                    onVoicePress={media.startRecording}
+                                    disabled={media.isSendingMedia}
+                                />
                             </>
                         )}
                     </View>
@@ -1052,6 +1076,17 @@ export function ChatScreen({ navigation, route }: Props) {
                     setSelectedMessage(null);
                 }}
                 excludeConversationId={conversationId}
+            />
+            <SchedulePickerModal
+                visible={showScheduleModal}
+                onClose={() => setShowScheduleModal(false)}
+                onConfirm={(scheduledAt) => {
+                    if (msg.text.trim()) {
+                        scheduling.scheduleNewMessage(msg.text.trim(), scheduledAt);
+                        msg.handleTextChange(''); // Clear input after scheduling
+                    }
+                    setShowScheduleModal(false);
+                }}
             />
             <AttachmentSheet
                 visible={media.showAttachmentSheet}

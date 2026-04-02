@@ -1,0 +1,4 @@
+export const STORY_DURATION_PHOTO = 5000;
+export const STORY_MAX_VIDEO_DURATION = 30;
+export const STORY_EXPIRY_HOURS = 24;
+export const STORY_CAPTION_MAX_LENGTH = 200;

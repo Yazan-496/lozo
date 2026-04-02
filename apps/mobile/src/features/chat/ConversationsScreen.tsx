@@ -8,6 +8,8 @@ import { OfflineBanner } from '../../shared/components/OfflineBanner';
 import { ConversationActionSheet } from './components/ConversationActionSheet';
 import { SearchBar } from './components/SearchBar';
 import { SearchResults } from './components/SearchResults';
+import { StoriesRow } from '../stories/StoriesRow';
+import { useStories } from '../stories/hooks/useStories';
 import { api } from '../../shared/services/api';
 import { getSocket } from '../../shared/services/socket';
 import { searchMessages } from '../../shared/db/search.db.ts';
@@ -75,6 +77,7 @@ export function ConversationsScreen({ navigation }: Props) {
     const isOnline = useNetworkStore((s) => s.isOnline);
     const colors = useThemeColors();
     const styles = useMemo(() => makeStyles(colors), [colors]);
+    const { userStories, myStories, refreshStories } = useStories();
 
     async function loadConversations() {
         // 1. Show cached data immediately
@@ -173,13 +176,15 @@ export function ConversationsScreen({ navigation }: Props) {
             socket.on('messages:status', onMessageStatus);
             socket.on('conversation:deleted', onConversationDeleted);
             socket.on('connect', onConnect);
+            socket.on('story:new', refreshStories);
             return () => {
                 socket.off('message:new', onNewMessage);
                 socket.off('messages:status', onMessageStatus);
                 socket.off('conversation:deleted', onConversationDeleted);
                 socket.off('connect', onConnect);
+                socket.off('story:new', refreshStories);
             };
-        }, [isOnline]),
+        }, [isOnline, refreshStories]),
     );
 
     async function onRefresh() {
@@ -370,6 +375,44 @@ export function ConversationsScreen({ navigation }: Props) {
                         data={filteredConversations}
                         keyExtractor={(item) => item.id}
                         renderItem={renderConversation}
+                        ListHeaderComponent={
+                            <StoriesRow
+                                userStories={userStories}
+                                myStories={myStories}
+                                currentUser={currentUser}
+                                onStoryPress={(index) =>
+                                    navigation.navigate('StoryViewer', {
+                                        userStories,
+                                        startIndex: index,
+                                    })
+                                }
+                                onAddPress={() => navigation.navigate('CreateStory')}
+                                onMyStoryPress={() => {
+                                    if (myStories.length > 0 && currentUser) {
+                                        navigation.navigate('StoryViewer', {
+                                            userStories: [
+                                                {
+                                                    user: {
+                                                        id: currentUser.id,
+                                                        displayName: currentUser.displayName,
+                                                        avatarUrl: currentUser.avatarUrl,
+                                                        avatarColor: currentUser.avatarColor,
+                                                    },
+                                                    stories: myStories,
+                                                    hasUnviewed: false,
+                                                    latestAt:
+                                                        myStories[0]?.createdAt ??
+                                                        new Date().toISOString(),
+                                                },
+                                            ],
+                                            startIndex: 0,
+                                        });
+                                    } else {
+                                        navigation.navigate('CreateStory');
+                                    }
+                                }}
+                            />
+                        }
                         refreshControl={
                             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                         }

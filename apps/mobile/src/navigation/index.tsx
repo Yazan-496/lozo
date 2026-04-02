@@ -23,6 +23,8 @@ import { ProfileScreen } from '../features/profile/ProfileScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { UserProfileScreen } from '../features/contacts/UserProfileScreen';
 import { MediaGalleryScreen } from '../features/chat/MediaGalleryScreen';
+import { CreateStoryScreen } from '../features/stories/CreateStoryScreen';
+import { StoryViewerScreen } from '../features/stories/StoryViewerScreen';
 
 const AuthStack = createNativeStackNavigator();
 const MainStack = createNativeStackNavigator();
@@ -203,6 +205,23 @@ function MainNavigator() {
                     headerShadowVisible: false,
                     headerTintColor: colors.primary,
                     headerTitleStyle: { color: colors.dark },
+                }}
+            />
+            <MainStack.Screen
+                name="CreateStory"
+                component={CreateStoryScreen}
+                options={{
+                    headerShown: false,
+                    presentation: 'fullScreenModal',
+                }}
+            />
+            <MainStack.Screen
+                name="StoryViewer"
+                component={StoryViewerScreen}
+                options={{
+                    headerShown: false,
+                    presentation: 'fullScreenModal',
+                    animation: 'fade',
                 }}
             />
         </MainStack.Navigator>

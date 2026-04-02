@@ -9,6 +9,7 @@ export const supabase = createClient(
 export const BUCKETS = {
   AVATARS: 'avatars',
   CHAT_MEDIA: 'chat-media',
+  STORIES: 'stories',
 } as const;
 
 // Initialize storage buckets (run once on server start)
